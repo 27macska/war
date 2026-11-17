@@ -129,7 +129,7 @@
   #menu .row > * { flex: 1; }
   #menuStart { padding: 12px; font-size: 1.1rem; }
   #victory { border-color: var(--accent); box-shadow: 0 0 50px rgba(250, 204, 21, .5); position: fixed; }
-  #victory h2 { font-size: 2.4rem; }
+  #victory h2 { font-size: 2.4rem; margin-bottom: 14px; }
   #victory p { min-height: 0; margin-bottom: 14px; color: #d6d3d1; }
   #victory .crownBig { font-size: 52px; line-height: 1; filter: drop-shadow(0 0 10px #facc15); }
   #victory.draw .crownBig { display: none; }
@@ -400,7 +400,6 @@
 <dialog id="victory" aria-labelledby="victoryTitle">
   <div class="crownBig" aria-hidden="true">👑</div>
   <h2 id="victoryTitle">YOU WIN!</h2>
-  <p id="victoryWhy"></p>
   <div class="score">
     <div><span id="vName0">Player 1</span><strong id="vCards0">0</strong></div>
     <div><span id="vName1">Player 2</span><strong id="vCards1">0</strong></div>
@@ -1663,11 +1662,6 @@ function showVictory() {
   const me = online() ? net.me : draw3() ? 0 : null;   // the seat that is "you", if there is one
   $("victory").classList.toggle("draw", w === null);
   $("victoryTitle").textContent = w === null ? "IT'S A DRAW" : w === me ? "YOU WIN!" : `${seatName(w).toUpperCase()} WINS!`;
-  $("victoryWhy").textContent = {
-    cards: w === null ? "" : `${seatName(1 - w)} ran out of cards.`,
-    cap: `Round ${game.cap} is over, so the most cards wins.`,
-    stalemate: "Both players ran out of cards in a duel.",
-  }[game.reason];
   for (const i of [0, 1]) {
     $("vName" + i).textContent = seatName(i);
     $("vCards" + i).textContent = counts[i];
