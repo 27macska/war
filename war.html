@@ -84,8 +84,9 @@
     transform: translateY(-8px); box-shadow: 0 0 0 3px var(--accent), 0 8px 14px rgba(0,0,0,.5); outline: none;
   }
   .hcards .card.chosen { transform: translateY(-10px); outline: 3px solid var(--accent); }
-  #status { text-align: center; padding: 12px 4px; font-weight: 600; min-height: 3.2em; }
-  #status.duel { color: var(--accent); font-size: 1.1rem; }
+  #status {                               /* read out by screen readers only; the table shows what happened */
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
   #log {
     margin-top: 12px; max-height: 220px; overflow-y: auto; background: rgba(0,0,0,.25);
     border-radius: 12px; padding: 8px 12px; font-size: .9rem; color: var(--muted);
@@ -137,7 +138,7 @@
   .lose { opacity: .45; filter: grayscale(1); }
   #sparks { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 3; }
   /* Layer for the deck being shuffled and dealt at the start of a game */
-  #mid { position: relative; }
+  #mid { position: relative; height: 16px; }
   #dealer { position: absolute; left: 50%; top: 50%; z-index: 20; pointer-events: none; }
   #dealer .card { box-shadow: 0 2px 6px rgba(0, 0, 0, .5); }
   .spark { position: absolute; width: 9px; height: 9px; margin: -4px 0 0 -4px; border-radius: 50%; opacity: 0; }
@@ -321,7 +322,7 @@
     <div class="hand" hidden><span></span><div class="hcards"></div></div>
   </section>
   <div id="mid">
-    <div id="status"></div>
+    <div id="status" role="status"></div>
     <div id="dealer"></div>
     <div id="bannerBox"><div id="banner" aria-hidden="true" hidden><strong>CLOSE CALL!</strong><span></span></div></div>
   </div>
