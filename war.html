@@ -206,6 +206,7 @@
     .spark { animation: spark .8s ease-out forwards; }
     /* Close call: both cards strain, then the winner lunges, the loser recoils and the banner slams down */
     .card.tense { animation: swell .5s ease-out forwards, quiver .08s linear infinite alternate; }
+    .card.tie { animation: tieThrob .45s ease-in-out infinite alternate; }
     .card.clash.win { animation: clashWin .55s cubic-bezier(.2, 1.4, .4, 1); }
     .card.clash.lose { animation: clashLose .55s ease-out; }
     #banner.show { animation: stamp .4s cubic-bezier(.2, 1.5, .4, 1), halo .8s ease-out; }
@@ -242,6 +243,8 @@
     60% { transform: translateX(-5px); } 80% { transform: translateX(5px); }
   }
   @keyframes swell { to { scale: 1.3; } }
+  @keyframes tieThrob { to { scale: 1.12; box-shadow: 0 0 18px 6px var(--duel); } }
+  .card.tie { outline: 3px solid var(--duel); z-index: 5; }
   @keyframes quiver { from { rotate: -5deg; } to { rotate: 5deg; } }
   @keyframes clashWin { from { scale: 1.3; } 35% { scale: 1.9; rotate: -8deg; } }
   @keyframes clashLose { from { scale: 1.3; } 35% { scale: .8; rotate: 12deg; translate: 0 8px; } }
@@ -854,10 +857,10 @@ const music = (() => {
 const $ = (id) => document.getElementById(id);
 const NAMES = ["Player 1", "Player 2"];
 const TIMINGS = {                       // hold: cards stay on the table; fly: travel time to the pile;
-  slow:    { hold: 900, fly: 600, tense: 800, banner: 1500 },   // tense: build-up before a close call;
-  normal:  { hold: 450, fly: 400, tense: 600, banner: 1200 },   // banner: how long the close call is shown
-  fast:    { hold: 90,  fly: 160, tense: 0,   banner: 450 },
-  instant: { hold: 90,  fly: 160, tense: 0,   banner: 450 },    // used only for single manual rounds
+  slow:    { hold: 900, fly: 600, tense: 800, banner: 1500, tie: 1600 },   // tense: build-up before a close call;
+  normal:  { hold: 450, fly: 400, tense: 600, banner: 1200, tie: 1200 },   // banner: how long the close call is shown;
+  fast:    { hold: 90,  fly: 160, tense: 0,   banner: 450,  tie: 500 },    // tie: tied cards shown before a duel
+  instant: { hold: 90,  fly: 160, tense: 0,   banner: 450,  tie: 500 },    // used only for single manual rounds
 };
 const SUSPENSE = 400;                   // pause before the deciding duel cards appear
 const REVEAL = 1480;                    // length of the deciding cards' flip animation (matches the CSS)
@@ -881,6 +884,9 @@ const online = () => !!(net && net.live);
 let book = {};
 let pickState = null; // the picks being waited for: { no, d, needs: [bool, bool], chosen: [index or undefined] }
 let shownHands = [[], []];                 // hands drawn on screen; lag the game like `shown`
+let arriving = [new Set(), new Set()];     // cards still flying from the draw pile into each hand (hidden until they land)
+const cardKey = (c) => c.rank + c.suit;
+const handCards = (i) => $("p" + i).querySelector(".hcards").children;
 const draw3 = () => !!(game && game.mode === "draw3");
 const humanSeat = () => (online() ? net.me : 0);
 const pickKey = (no, d, i) => `${no}:${d}:${i}`;
@@ -970,7 +976,11 @@ function renderHands() {
              : "Your hand")
       : (online() ? "Opponent's hand" : "Computer's hand") + (chosen !== undefined ? " · picked" : "");
     label.className = mine && can ? "go" : "";
-    box.lastElementChild.replaceChildren(...shownHands[i].map((card, k) => handCard(card, k, mine, can, k === chosen)));
+    box.lastElementChild.replaceChildren(...shownHands[i].map((card, k) => {
+      const el = handCard(card, k, mine, can, k === chosen);
+      if (arriving[i].has(cardKey(card))) el.style.visibility = "hidden";
+      return el;
+    }));
   }
   const inDuel = on3 && active && active.picking && ps && ps.needs[me];
   $("duelHand").hidden = !inDuel;
@@ -978,6 +988,55 @@ function renderHands() {
     const chosen = ps.chosen[me];
     $("duelHand").lastElementChild.replaceChildren(...shownHands[me].map((card, k) => handCard(card, k, true, can, k === chosen)));
   }
+}
+
+// Cards that are new in a hand fly in one by one from that player's draw pile, face down.
+// Yours turn face up as they land. `before` is what each hand showed until now.
+function drawIntoHands(before) {
+  if (reduceMotion || !draw3()) return;
+  const ms = Math.max(240, timings().fly), gap = Math.min(140, ms / 2);
+  for (const i of [0, 1]) {
+    const had = new Set(before[i].map(cardKey));
+    shownHands[i].filter((c) => !had.has(cardKey(c))).forEach((c, n) => {
+      arriving[i].add(cardKey(c));
+      setTimeout(() => flyToHand(i, cardKey(c), ms), n * gap);
+    });
+  }
+  renderHands();
+}
+
+function flyToHand(i, key, ms) {
+  if (!arriving[i].has(key)) return;                       // a new game started meanwhile
+  const slot = () => handCards(i)[shownHands[i].findIndex((c) => cardKey(c) === key)];
+  const target = slot();
+  if (!target) { arriving[i].delete(key); renderHands(); return; }
+  const from = stackEl(i, "draw").getBoundingClientRect(), to = target.getBoundingClientRect();
+  const el = document.createElement("div");
+  el.className = "card down flyer";
+  el.style.cssText = `position:fixed; left:${from.left}px; top:${from.top}px; z-index:50; pointer-events:none`;
+  document.body.append(el);
+  pulse(stackEl(i, "draw"));
+  music.ticks(0, 1, 0, 0.04);
+  const land = () => {
+    el.remove();
+    if (!arriving[i].delete(key)) return;
+    const landed = slot();
+    if (!landed) return;
+    landed.style.visibility = "";
+    if (i === humanSeat()) landed.animate([{ transform: "scaleX(0)" }, { transform: "scaleX(1)" }], { duration: 160 });
+  };
+  el.animate([{ transform: "none" }, { transform: `translate(${to.left - from.left}px, ${to.top - from.top}px)` }],
+             { duration: ms, easing: "cubic-bezier(.2, .7, .3, 1)" }).onfinish = land;
+  setTimeout(land, ms + 600);              // in case the browser holds the animation back (a hidden tab)
+}
+
+// A card played from a hand slides from its place in the hand to the table.
+function flyFrom(el, from, ms = 340) {
+  const to = el.getBoundingClientRect();
+  if (reduceMotion || !from || !from.width || !to.width) return;
+  el.style.zIndex = 10;
+  el.animate([{ transform: `translate(${from.left - to.left}px, ${from.top - to.top}px)` }, { transform: "none" }],
+             { duration: ms, easing: "cubic-bezier(.2, .8, .3, 1)" }).onfinish = () => { el.style.zIndex = ""; };
 }
 
 function handCard(card, k, mine, can, chosen) {
@@ -1091,15 +1150,21 @@ function burst(el, layer = $("sparks")) {
 // Move one card from a player's piles on screen to the table (mirrors drawCard).
 function place(i, entry, inPopup = true) {
   const s = shown[i];
+  let from = null;                                         // Draw 3: where in the hand the card was
   if (entry.fromHand) {                                    // Draw 3: the card leaves the hand, not the pile
     const h = shownHands[i], k = h.findIndex((c) => c.rank === entry.card.rank && c.suit === entry.card.suit);
-    if (k >= 0) h.splice(k, 1);
+    if (k >= 0) {
+      if (handCards(i)[k]) from = handCards(i)[k].getBoundingClientRect();
+      h.splice(k, 1);
+    }
     renderHands();
   } else {
     if (s.draw === 0) { s.draw = s.won; s.won = 0; s.refills++; pulse(stackEl(i, "draw")); }
     s.draw--;
   }
-  laidEl(i).append(cardEl(entry));
+  const el = cardEl(entry, !from);
+  laidEl(i).append(el);
+  if (from) flyFrom(el, from);
   if (inPopup && $("duel").open) {                         // the duel popup shows the same cards
     $("d" + i).append(cardEl(entry));
     $("duel").scrollTop = $("duel").scrollHeight;          // keep the newest cards in view
@@ -1167,6 +1232,7 @@ function updateControls() {
   const d3 = draw3(), ps = pickState, idle = !a || a.resolved;
   const label = dealing ? "Skip shuffle"
               : a && a.tense ? "So close…"
+              : a && a.tie ? "Tie!"
               : a && a.picking ? (canPick() ? "Pick your deciding card" : "Waiting for opponent…")
               : a && a.flipping ? "Flipping…"
               : theirs ? "Opponent's turn…"
@@ -1239,7 +1305,18 @@ function follow() {
   a.half = false;
   place(i, r.laid[i][0]);
   drawPiles();
-  if (r.duels > 0) beginDuel(1); else resolve();
+  if (r.duels > 0) showTie(); else resolve();
+}
+
+// The opening cards tie. They stay on the table for a moment, glowing, before the duel popup opens.
+function showTie() {
+  const a = active, r = a.r, wait = reduceMotion ? 700 : timings().tie;
+  a.tie = true;
+  for (const i of [0, 1]) laidEl(i).lastElementChild.classList.add("tie");
+  setStatus(`Round ${r.round}: Tie! Both played ${rankName(r.laid[0][0].card.rank)}…`, true);
+  music.swell(wait / 1000);
+  updateControls();
+  later(() => { a.tie = false; beginDuel(1); }, wait);
 }
 
 function beginDuel(d) {
@@ -1459,7 +1536,7 @@ function collect(r, done) {
   const cards = [...laidEl(w).children, ...laidEl(1 - w).children];  // winner's cards land first
   const { fly } = timings();
   const stagger = Math.min(fly * 0.15, 600 / cards.length);
-  cards.forEach((el) => el.classList.remove("deal", "tense", "clash"));
+  cards.forEach((el) => el.classList.remove("deal", "tense", "clash", "tie"));
   const t = target.getBoundingClientRect();
   cards.forEach((el, k) => {
     const b = el.getBoundingClientRect();
@@ -1493,9 +1570,11 @@ function settle(clearTable = true) {
   updateControls();
 }
 
-function syncHands() {
+function syncHands(animate = true) {
+  const before = shownHands;
   shownHands = game.players.map((p) => p.hand.map((c) => ({ ...c })));
   renderHands();
+  if (animate) drawIntoHands(before);
 }
 
 const autoNext = () => (draw3() ? tryProceed() : step());
@@ -1541,7 +1620,7 @@ function startAuto() {
       setStatus(resultText(r));
     }
     shown = realCounts();
-    syncHands();
+    syncHands(false);
     drawPiles();
     updateControls();
     music.section(baseSection());
@@ -1563,6 +1642,8 @@ function start(deck) {
   book = {};
   pickState = null;
   shownHands = [[], []];
+  arriving = [new Set(), new Set()];
+  document.querySelectorAll(".flyer").forEach((el) => el.remove());
   game = newGame(capValue(), deck, $("mode").value === "draw3" ? "draw3" : "classic");
   renderHands();
   if (net) Object.assign(net, { point: 0, remotePoint: -1, started: online() });
