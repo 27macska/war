@@ -138,6 +138,31 @@
   #tableSparks { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 30; }
   .card.tense { z-index: 5; box-shadow: 0 0 16px 4px rgba(250, 204, 21, .7); }
   .call { display: inline-block; color: var(--accent); font-size: 1.4em; letter-spacing: .06em; }
+  /* Ace beats king: the table goes dark, the ace strikes the king and takes its crown (see strikeKing) */
+  #dim {
+    position: fixed; inset: 0; z-index: 25; pointer-events: none;
+    background: #000; opacity: 0; transition: opacity .35s;
+  }
+  #dim.on { opacity: .6; }
+  .card.royal { z-index: 40; }            /* above the darkness */
+  .card.strike { z-index: 41; }
+  .card.slain { background: #d6d3d1; color: #57534e; box-shadow: none; }
+  .card.slain::after {                    /* the slash left across the king */
+    content: ""; position: absolute; left: -40%; right: -40%; top: 50%; height: 5px; margin-top: -2.5px;
+    rotate: -56deg; border-radius: 3px; box-shadow: 0 0 8px #dc2626;
+    background: linear-gradient(90deg, transparent, #dc2626 15%, #fff 50%, #dc2626 85%, transparent);
+  }
+  .crown {
+    position: absolute; left: 50%; top: -21px; translate: -50% 0; rotate: -10deg; z-index: 2;
+    font-size: 26px; line-height: 1; pointer-events: none; filter: drop-shadow(0 0 5px #facc15);
+  }
+  .ring {
+    position: absolute; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%;
+    border: 4px solid #fde047; opacity: 0;
+  }
+  #banner.royal { background: linear-gradient(180deg, #fde047, #f59e0b); color: #1c1917; border-color: #fffbeb; }
+  #banner.royal strong { color: #1c1917; }
+  .call.royal { color: #fde047; text-shadow: 0 0 10px #f59e0b; }
   @media (max-height: 560px) {           /* short windows: a compact popup that still fits */
     .dcards .flip { width: 36px; height: 52px; }
     dialog { padding: 10px; }
@@ -169,6 +194,13 @@
     #banner.show { animation: stamp .4s cubic-bezier(.2, 1.5, .4, 1), halo .8s ease-out; }
     .call { animation: stamp .4s cubic-bezier(.2, 1.5, .4, 1); }
     main.jolt, dialog.jolt { animation: jolt .4s linear; }
+    /* Ace beats king. The ace's flight is .9s and its blow lands at 42% (STRIKE and STRIKE_HIT in the script) */
+    .card.strike { animation: strike .9s linear; }
+    .card.slain { animation: knocked .8s ease-out; }
+    .card.slain::after { animation: slash .2s ease-out both; }
+    #dim.flash { animation: goldFlash .6s ease-out; }
+    .ring { animation: ring .6s ease-out forwards; }
+    .flip .crown { animation: crownDrop .5s cubic-bezier(.3, 1.5, .5, 1) both; }
   }
   @keyframes rise { from { transform: scale(.4); opacity: 0; } to { transform: scale(1.5); opacity: 1; } }
   @keyframes tremble { from { transform: rotate(-5deg); } to { transform: rotate(5deg); } }
@@ -205,6 +237,24 @@
     15% { transform: translate(-7px, 4px) rotate(-.6deg); } 30% { transform: translate(6px, -5px) rotate(.6deg); }
     45% { transform: translate(-5px, -3px); } 60% { transform: translate(4px, 3px); } 80% { transform: translate(-2px, 1px); }
   }
+  /* --dx/--dy: from the ace to the king. The ace winds up, spins across, lands its blow and returns. */
+  @keyframes strike {
+    0% { scale: 1.3; animation-timing-function: ease-out; }
+    18% { translate: calc(var(--dx) * -.12) calc(var(--dy) * -.12); scale: 1.5; rotate: -14deg; animation-timing-function: ease-in; }
+    42% { translate: var(--dx) var(--dy); scale: 1.5; rotate: 360deg; }
+    58% { translate: var(--dx) var(--dy); scale: 1.35; rotate: 360deg; animation-timing-function: ease-in-out; }
+    100% { translate: 0 0; scale: 1; rotate: 360deg; }
+  }
+  /* --kx/--ky: the way the king is knocked. It spins once round and comes to rest where it stood. */
+  @keyframes knocked {
+    0% { scale: 1.3; }
+    35% { translate: var(--kx) var(--ky); rotate: 250deg; scale: .85; }
+    100% { translate: 0 0; rotate: 360deg; scale: 1; }
+  }
+  @keyframes slash { from { scale: 0 1; } }
+  @keyframes goldFlash { from { background: #facc15; opacity: .55; } to { background: #facc15; opacity: 0; } }
+  @keyframes ring { from { scale: .3; opacity: 1; } to { scale: 7; opacity: 0; } }
+  @keyframes crownDrop { from { translate: -50% -70px; scale: 2; opacity: 0; } }
 </style>
 </head>
 <body>
@@ -262,6 +312,7 @@
   <div id="log"></div>
   <div id="tableSparks"></div>
 </main>
+<div id="dim"></div>
 
 <dialog id="duel" aria-labelledby="duelTitle">
   <h2 id="duelTitle">DUEL!</h2>
@@ -385,7 +436,8 @@ function playRound(g) {
     g.winner = c[0] === c[1] ? null : (c[0] > c[1] ? 0 : 1);
   }
   const close = winner !== null && Math.abs(up[0].rank - up[1].rank) === 1;   // won by a single rank
-  return { round: g.round, laid, up, winner, duels, potSize, lastCardStands, close };
+  const kingslayer = close && up[winner].rank === 14;                         // an ace beat a king
+  return { round: g.round, laid, up, winner, duels, potSize, lastCardStands, close, kingslayer };
 }
 
 // ---------- Music (generated by the browser, no audio files) ----------
@@ -613,11 +665,32 @@ const music = (() => {
     for (let k = 0; k < n; k++) hit(ctx.currentTime + 0.02 + k * 0.04, 0.04 + 0.18 * k / n, 0.04, 1200);
   }
 
+  // A few quick notes, `gap` seconds apart, the last one held for `hold` seconds: stings and fanfares.
+  function notes(list, gap, hold, peak = 0.1) {
+    if (!ctx || !timer) return;
+    const t = ctx.currentTime + 0.07;
+    list.forEach((n, k) => tone("square", n, t + k * gap, k === list.length - 1 ? hold : 0.3, peak, bus.lead, 0.005));
+  }
+
+  // A tone that slides upward for `seconds`: the tension before an ace takes a king.
+  function riser(seconds) {
+    if (!ctx || !timer) return;
+    const t = ctx.currentTime + 0.02, o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = "sawtooth";
+    o.frequency.setValueAtTime(110, t);
+    o.frequency.exponentialRampToValueAtTime(880, t + seconds);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.12, t + seconds);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + seconds + 0.05);
+    o.connect(g); g.connect(bus.lead);
+    o.start(t); o.stop(t + seconds + 0.1);
+  }
+
   // The deciding card lands: a deep boom and a long crash. `sting` adds a quick rising flourish for a close call.
   function impact(sting = false) {
     if (!ctx || !timer) return;
     const t = ctx.currentTime + 0.02;
-    if (sting) [76, 81, 88].forEach((n, k) => tone("square", n, t + 0.05 + k * 0.07, 0.3, 0.1, bus.lead, 0.005));
+    if (sting) notes([76, 81, 88], 0.07, 0.3);
     const o = ctx.createOscillator(), g = ctx.createGain();
     o.type = "triangle";
     o.frequency.setValueAtTime(130, t);
@@ -691,7 +764,9 @@ const music = (() => {
     },
     get mode() { return mode; },
     section(name) { setMode(name); },                      // "march", "duel", "roll" or "victory"
-    impact, swell, ticks, hush,
+    impact, swell, riser, ticks, hush,
+    fanfare() { notes([72, 76, 79, 84], 0.08, 0.7); },     // an ace takes a king: a rising major chord
+    chime() { notes([88, 93], 0.09, 0.5, 0.07); },         // the crown lands
   };
 })();
 
@@ -1011,12 +1086,18 @@ function flipDuel() {
 function resolve() {
   const a = active, r = a.r, { tense } = timings();
   if (!r.close || reduceMotion || !tense || $("duel").open) { announce(); return; }
+  const wait = tense + (r.kingslayer ? 500 : 0);   // an ace against a king builds up for longer, in the dark
   a.tense = true;
   for (const i of [0, 1]) laidEl(i).lastElementChild.classList.add("tense");
+  if (r.kingslayer) {
+    for (const i of [0, 1]) laidEl(i).lastElementChild.classList.add("royal");
+    $("dim").classList.add("on");
+    music.riser(wait / 1000);
+  }
   setStatus(`Round ${r.round}: ${rankName(r.up[0].rank)} against ${rankName(r.up[1].rank)}…`);
-  music.swell(tense / 1000);
+  music.swell(wait / 1000);
   updateControls();
-  later(announce, tense);
+  later(announce, wait);
 }
 
 // The round's winner is now visible on the table.
@@ -1037,8 +1118,7 @@ function announce() {
   };
   if (!$("duel").open) {
     music.section(baseSection());
-    if (drama) closeCall(r);
-    finish(drama ? t.banner : 0);
+    finish(drama ? closeCall(r, t) : 0);
     return;
   }
   // Show who won the duel in the popup for a moment, then close it and carry on.
@@ -1056,36 +1136,99 @@ function announce() {
     if (!reduceMotion) burst(best);
     if (drama) later(() => {                               // a beat later the close call lands as a second blow
       const call = document.createElement("strong");
-      call.className = "call";
-      call.textContent = "CLOSE CALL!";
+      call.className = r.kingslayer ? "call royal" : "call";
+      call.textContent = r.kingslayer ? "KINGSLAYER!" : "CLOSE CALL!";
       $("duelText").replaceChildren(call, ` ${beats(r)}. ${NAMES[w]} takes all ${r.potSize} cards.`);
       replay($("duel"), "jolt");
       burst(best);
-      music.impact(true);
+      music.impact(!r.kingslayer);
+      if (r.kingslayer) { best.append(crownEl()); music.fanfare(); }   // the crown drops onto the ace
     }, 600);
   }
   later(() => { closeDuel(); finish(); }, DUEL_RESULT + (drama ? 800 : 0));
 }
 
-// A close call on the table: the winning card lunges, the loser recoils, and a banner slams down between them.
-function closeCall(r) {
+// A close call on the table: the winning card lunges, the loser recoils, and a banner slams down
+// between them. An ace beating a king gets a scene of its own instead (see strikeKing).
+// Returns how long the scene stays on screen before the cards are collected.
+function closeCall(r, t) {
   const win = laidEl(r.winner).lastElementChild, lose = laidEl(1 - r.winner).lastElementChild;
+  const royal = r.kingslayer;
+  $("banner").firstElementChild.textContent = royal ? "KINGSLAYER!" : "CLOSE CALL!";
+  $("banner").lastElementChild.textContent = beats(r);
+  $("banner").classList.toggle("royal", royal);
+  $("tableSparks").replaceChildren();
+  if (royal && t.tense) { strikeKing(win, lose); return t.banner + CROWNING; }
   win.classList.remove("tense");
   lose.classList.remove("tense");
   win.classList.add("win", "clash");
   lose.classList.add("lose", "clash");
-  $("banner").lastElementChild.textContent = beats(r);
+  slam(win, royal);
+  return t.banner;
+}
+
+// The moment of impact: the banner slams down, sparks fly out of `el` and the table shakes.
+function slam(el, royal) {
   $("banner").hidden = false;
   replay($("banner"), "show");
-  $("tableSparks").replaceChildren();
-  burst(win, $("tableSparks"));
+  burst(el, $("tableSparks"));
   replay(document.querySelector("main"), "jolt");
-  music.impact(true);
+  music.impact(!royal);
+  if (royal) music.fanfare();
+}
+
+// An ace beats a king. The ace spins across the table and strikes the king, which is slashed and
+// knocked into a spin. Once the ace is back in its place, the king's crown floats over and lands on it.
+const STRIKE = 900, STRIKE_HIT = 380;    // the ace's flight there and back, and when its blow lands (match the CSS)
+const CROWN_FLY = 650;                   // the crown's trip from the king to the ace
+const CROWNING = 1300;                   // extra time on screen so the whole scene can play out
+
+function strikeKing(ace, king) {
+  const a = ace.getBoundingClientRect(), k = king.getBoundingClientRect();
+  const dx = k.left + k.width / 2 - (a.left + a.width / 2), dy = k.top + k.height / 2 - (a.top + a.height / 2);
+  const reach = Math.hypot(dx, dy) || 1;
+  ace.classList.remove("tense");
+  ace.style.setProperty("--dx", `${dx}px`);
+  ace.style.setProperty("--dy", `${dy}px`);
+  ace.classList.add("royal", "win", "strike");
+  later(() => {                                            // the blow lands
+    const layer = $("tableSparks"), box = layer.getBoundingClientRect(), ring = document.createElement("div");
+    king.classList.remove("tense");
+    king.style.setProperty("--kx", `${dx / reach * 46}px`);   // knocked on along the ace's path
+    king.style.setProperty("--ky", `${dy / reach * 46}px`);
+    king.classList.add("royal", "slain");
+    $("dim").classList.remove("on");
+    replay($("dim"), "flash");
+    ring.className = "ring";
+    ring.style.cssText = `left:${k.left + k.width / 2 - box.left}px; top:${k.top + k.height / 2 - box.top}px`;
+    slam(king, true);
+    layer.append(ring);
+  }, STRIKE_HIT);
+  later(() => {                                            // the ace is home again: the crown changes hands
+    const crown = crownEl();
+    ace.append(crown);
+    const c = crown.getBoundingClientRect();
+    const cx = k.left + k.width / 2 - (c.left + c.width / 2), cy = k.top + k.height / 2 - (c.top + c.height / 2);
+    crown.animate([
+      { transform: `translate(${cx}px, ${cy}px) scale(.4) rotate(-50deg)`, opacity: 0 },
+      { transform: `translate(${cx / 2}px, ${cy / 2 - 60}px) scale(1.8) rotate(25deg)`, opacity: 1 },
+      { transform: "none", opacity: 1 },
+    ], { duration: CROWN_FLY, easing: "ease-in-out" });
+    later(() => { burst(crown, $("tableSparks")); music.chime(); }, CROWN_FLY);
+  }, STRIKE + 40);
+}
+
+function crownEl() {
+  const el = document.createElement("span");
+  el.className = "crown";
+  el.textContent = "👑";
+  return el;
 }
 
 function clearCloseCall() {
   $("banner").hidden = true;
   $("tableSparks").replaceChildren();
+  $("dim").classList.remove("on", "flash");
 }
 
 // Fly every card on the table into the winner's won pile, which grows as each one lands.
@@ -1140,7 +1283,8 @@ function logRound(r) {
   const faces = (i) => r.laid[i].filter((x) => x.up).map((x) => rankLabel(x.card.rank) + x.card.suit).join(" → ");
   const line = document.createElement("div");
   line.textContent = `#${r.round}  P1 ${faces(0)}  |  P2 ${faces(1)}  —  ` +
-    (r.winner === null ? "tie" : `${NAMES[r.winner]} +${r.potSize}`) + (r.close ? " · close call" : "");
+    (r.winner === null ? "tie" : `${NAMES[r.winner]} +${r.potSize}`) +
+    (r.kingslayer ? " · kingslayer" : r.close ? " · close call" : "");
   $("log").prepend(line);
   while ($("log").childElementCount > 200) $("log").lastChild.remove();
 }
