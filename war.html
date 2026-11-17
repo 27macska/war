@@ -120,6 +120,14 @@
     background: var(--accent); color: var(--accent-ink); font-size: .75rem; font-weight: 700;
   }
   .badge.theirs { background: none; color: var(--muted); box-shadow: inset 0 0 0 1px var(--muted); }
+  #menu { border-color: var(--accent); box-shadow: 0 0 40px rgba(250, 204, 21, .35); }
+  #menu p { min-height: 0; margin-bottom: 16px; color: #d6d3d1; }
+  #menu .opts { display: grid; gap: 12px; margin-bottom: 18px; text-align: left; }
+  #menu .opts label { justify-content: space-between; font-size: 1rem; color: #fff; gap: 12px; }
+  #menu .opts select, #menu .opts input { width: 62%; min-width: 0; }
+  #menu .row { display: flex; margin-bottom: 10px; }
+  #menu .row > * { flex: 1; }
+  #menuStart { padding: 12px; font-size: 1.1rem; }
   #lobby { border-color: var(--accent); box-shadow: 0 0 40px rgba(250, 204, 21, .35); }
   #lobby h2 { font-size: 1.5rem; letter-spacing: 0; margin-bottom: 8px; }
   #lobby p { min-height: 0; margin-bottom: 12px; }
@@ -292,22 +300,8 @@
   <div class="controls">
     <button id="next">Next round</button>
     <button id="auto" class="secondary">Auto-play</button>
-    <label class="speed">Speed
-      <select id="speed">
-        <option value="slow">Slow</option>
-        <option value="normal" selected>Normal</option>
-        <option value="fast">Fast</option>
-        <option value="instant">Instant</option>
-      </select>
-    </label>
-    <label>Mode
-      <select id="mode">
-        <option value="classic">Classic</option>
-        <option value="draw3" selected>Draw 3</option>
-      </select>
-    </label>
-    <label>Deck passes <input id="cap" type="number" min="1" value="3"></label>
     <button id="new" class="secondary">New game</button>
+    <button id="menuBtn" class="secondary">Menu</button>
   </div>
 
   <section class="player" id="p0">
@@ -351,6 +345,36 @@
   <div class="drow" id="duelHand" hidden><span>Your hand</span><div class="dcards"></div></div>
   <button id="duelBtn">Place duel card 1 of 3</button>
   <div id="sparks"></div>
+</dialog>
+
+<dialog id="menu" aria-labelledby="menuTitle">
+  <h2 id="menuTitle">WAR</h2>
+  <p>Choose how you want to play.</p>
+  <div class="opts">
+    <label>Game mode
+      <select id="mode">
+        <option value="draw3" selected>Draw 3: pick from a hand</option>
+        <option value="classic">Classic: flip the top card</option>
+      </select>
+    </label>
+    <label>Opponent
+      <select id="opponent">
+        <option value="cpu" selected>Computer (offline)</option>
+        <option value="online">Friend online</option>
+      </select>
+    </label>
+    <label class="speed">Speed
+      <select id="speed">
+        <option value="slow">Slow</option>
+        <option value="normal" selected>Normal</option>
+        <option value="fast">Fast</option>
+        <option value="instant">Instant</option>
+      </select>
+    </label>
+    <label>Deck passes <input id="cap" type="number" min="1" value="3"></label>
+  </div>
+  <div class="row"><button id="menuStart">Start game</button></div>
+  <div class="row"><button id="menuBack" class="secondary">Back to game</button></div>
 </dialog>
 
 <dialog id="lobby" aria-labelledby="lobbyTitle">
@@ -1222,6 +1246,7 @@ function resultText(r) {
 }
 
 function updateControls() {
+  if (!game) return;                               // nothing dealt yet: the start menu is up
   const a = active, on = online();
   const over = game.over && (!a || a.resolved);    // don't give the ending away mid-duel
   const turn = on ? turnSeat() : null;             // online: the player whose press the game is waiting for
@@ -1880,6 +1905,7 @@ function endSession(message = "") {
   if ($("lobby").open) { showLobby("choose"); lobbyStatus(message); showNet(); }
   else showNet(message);
   updateControls();
+  if (!game && !$("lobby").open) openMenu();   // the link dropped before a game was dealt
 }
 
 function showNet(message = "") {
@@ -1994,7 +2020,10 @@ $("codeIn").onkeydown = (e) => { if (e.key === "Enter") joinGame($("codeIn").val
 const abandonLobby = () => { if (net && !net.live) endSession(); };
 $("lobbyClose").onclick = () => { abandonLobby(); $("lobby").close(); };
 $("lobby").addEventListener("cancel", abandonLobby);     // Esc key
-$("lobby").addEventListener("close", abandonLobby);
+$("lobby").addEventListener("close", () => {
+  abandonLobby();
+  if (!game && !online()) openMenu();      // gave up before any game: back to the start menu
+});
 $("copyBtn").onclick = async () => {
   const link = location.protocol.startsWith("http");
   try {
@@ -2007,6 +2036,7 @@ $("copyBtn").onclick = async () => {
 addEventListener("pagehide", () => { if (net) net.peer.destroy(); });   // tell the opponent straight away
 
 $("next").onclick = () => {
+  if (!game) { openMenu(); return; }
   if (dealing) { finishDeal(); return; }
   if (online()) { localPress(); return; }
   if (active && active.waiting) { advanceDuel(); return; }   // auto-play stays on through a duel
@@ -2020,13 +2050,39 @@ $("next").onclick = () => {
   stopAuto();
   step();
 };
-$("mode").onchange = () => { if (!online()) { stopAuto(); start(); } };   // online: the host's next game uses it
+// --- Start menu: game mode, opponent, speed and deck passes, chosen before a game starts ---
+
+function openMenu() {
+  if ($("menu").open) return;
+  if (autoOn) stopAuto();
+  const on = online(), inGame = !!game;
+  if (on) $("opponent").value = "online";          // otherwise keep the last choice
+  $("opponent").disabled = on;
+  $("menuStart").hidden = on;                      // online: New game (host) starts the next game
+  $("menuBack").hidden = !inGame && !on;
+  showMenuStart();
+  $("menu").showModal();
+}
+
+function showMenuStart() {
+  $("menuStart").textContent = $("opponent").value === "online" ? "Find a friend online" : "Start game";
+}
+
+$("opponent").onchange = showMenuStart;
+$("menuStart").onclick = () => {
+  $("menu").close();
+  if ($("opponent").value === "online") openLobby();
+  else start();
+};
+$("menuBack").onclick = () => $("menu").close();
+$("menuBtn").onclick = openMenu;
+$("menu").addEventListener("cancel", (e) => { if (!game && !online()) e.preventDefault(); });   // Esc: back to the game, if there is one
 $("duelBtn").onclick = () => {
   if (online()) localPress();
   else if (active && active.waiting) advanceDuel();
 };
 $("duel").addEventListener("cancel", (e) => e.preventDefault());   // Esc must not dismiss a duel
-$("auto").onclick = () => { if (autoOn) stopAuto(); else startAuto(); };
+$("auto").onclick = () => { if (!game) openMenu(); else if (autoOn) stopAuto(); else startAuto(); };
 $("speed").onchange = () => { if (autoOn && $("speed").value === "instant") { stopAuto(); startAuto(); } };
 $("new").onclick = () => {
   if (!online()) start();
@@ -2040,11 +2096,10 @@ $("vol").value = Math.round(music.volume * 100);
 $("vol").oninput = () => music.setVolume($("vol").value / 100);
 showMusic();
 
-start();
-
-// An invite link ends in #ROOMCODE: join that room straight away.
+// An invite link ends in #ROOMCODE: join that room straight away. Otherwise start at the menu.
 const invite = location.hash.match(/^#([A-Za-z2-9]{5})$/);
-if (invite) {
+if (!invite) openMenu();
+else {
   openLobby();
   $("codeIn").value = invite[1].toUpperCase();
   joinGame(invite[1]);

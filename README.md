@@ -4,6 +4,17 @@ The card game War in your browser. Play against the computer or a friend online,
 
 **Play now:** https://27macska.github.io/war/
 
+## Starting a game
+
+The game opens with a menu. Choose:
+
+- **Game mode:** Draw 3 (pick from a hand) or Classic (flip the top card)
+- **Opponent:** the computer (works offline) or a friend online
+- **Speed:** how fast rounds play
+- **Deck passes:** how long the game lasts (see Winning)
+
+Then click **Start game**, or **Find a friend online**. Click **Menu** at any time to change speed or start a different game.
+
 ## Classic rules
 
 - The deck is shuffled and split in half: each player gets 26 cards in a **Draw** pile.
@@ -27,7 +38,7 @@ If you run low on cards in a duel, you place fewer face down so you still have o
 
 ## Draw 3 mode
 
-Draw 3 is the default mode: you choose your cards instead of flipping the top one. Set **Mode → Classic** for the original game.
+Draw 3 is the default mode: you choose your cards instead of flipping the top one. Choose **Classic** in the menu for the original game.
 
 - Each player holds a hand of 3 cards. Click a card to play it.
 - Both players pick at the same time, and the cards are shown together. Nobody sees the other player's card before picking.
@@ -41,17 +52,15 @@ Draw 3 is the default mode: you choose your cards instead of flipping the top on
 | --- | --- |
 | **Next round** | Plays the next round. In a duel, it places your face-down cards. |
 | **Auto-play** | Plays rounds by itself. It stops at each duel so you can place the face-down cards. |
-| **Speed** | How fast rounds play. **Instant** with Auto-play runs straight to the end of the game. |
-| **Mode** | Draw 3 (the default) or Classic. Changing it starts a new game. |
-| **Deck passes** | How many trips through the Draw pile before the game ends (see Winning). |
-| **New game** | Shuffles and deals a new game. |
+| **New game** | Shuffles and deals a new game with the same settings. |
+| **Menu** | Opens the menu. Speed changes apply straight away; **Start game** starts a new game with the new settings. **Instant** speed with Auto-play runs straight to the end of the game. |
 | **Music** / **Volume** | Turns the music on or off and sets its volume. |
 
 A round won by a single rank is a **close call**, and an ace beating a king is a **kingslayer**. Both get their own animation.
 
 ## Playing online
 
-1. Click **Play online**.
+1. In the menu, set **Opponent** to **Friend online** and click **Find a friend online**. (You can also click **Play online** at the top.)
 2. One player clicks **Host a game** and shares the 5-character room code, or clicks **Copy invite link** and sends the link.
 3. The other player types the code and clicks **Join**, or opens the invite link.
 
