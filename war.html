@@ -7,7 +7,7 @@
 <style>
   :root {
     --bg: #14532d; --panel: #166534; --ink: #f0fdf4; --muted: #bbf7d0;
-    --card: #ffffff; --card-ink: #111827; --red: #b91c1c; --back: #1e3a8a;
+    --card: #ffffff; --card-ink: #111827; --red: #b91c1c; --back: #1e3a8a; --back2: #3b82f6;
     --accent: #facc15; --accent-ink: #1c1917; --duel: #dc2626;
   }
   * { box-sizing: border-box; }
@@ -42,7 +42,7 @@
   .stack {
     width: 52px; height: 76px; border-radius: 7px; margin: 0 18px 18px 0;
     display: flex; align-items: center; justify-content: center;
-    background: repeating-linear-gradient(45deg, var(--back) 0 6px, #3b82f6 6px 12px);
+    background: repeating-linear-gradient(45deg, var(--back) 0 6px, var(--back2) 6px 12px);
     border: 3px solid var(--card); transition: box-shadow .15s;
   }
   .stack span {
@@ -61,9 +61,10 @@
   }
   .card.red { color: var(--red); }
   .card.down {
-    background: repeating-linear-gradient(45deg, var(--back) 0 6px, #3b82f6 6px 12px);
+    background: repeating-linear-gradient(45deg, var(--back) 0 6px, var(--back2) 6px 12px);
     border: 3px solid var(--card);
   }
+  #p1, #d1, .p2back { --back: #991b1b; --back2: #ef4444; }   /* Player 2's card backs are red */
   .card.best { outline: 3px solid var(--accent); }
   .card.deal { animation: deal .14s ease-out; }
   @keyframes deal { from { transform: translateX(-24px); opacity: 0; } }
@@ -1071,7 +1072,7 @@ function flyToHand(i, key, ms) {
   if (!target) { arriving[i].delete(key); renderHands(); return; }
   const from = stackEl(i, "draw").getBoundingClientRect(), to = target.getBoundingClientRect();
   const el = document.createElement("div");
-  el.className = "card down flyer";
+  el.className = "card down flyer" + (i === 1 ? " p2back" : "");
   el.style.cssText = `position:fixed; left:${from.left}px; top:${from.top}px; z-index:50; pointer-events:none`;
   document.body.append(el);
   pulse(stackEl(i, "draw"));
@@ -1160,7 +1161,7 @@ function drawPiles() {
       el.innerHTML = `<span>${n}</span>`;
       const layers = [];
       for (let k = 1; k <= Math.floor(n / 3); k++)
-        layers.push(`${k}px ${k}px 0 ${k % 2 ? "#1e3a8a" : "#dbeafe"}`);
+        layers.push(`${k}px ${k}px 0 ${k % 2 ? (i ? "#991b1b" : "#1e3a8a") : (i ? "#fee2e2" : "#dbeafe")}`);
       el.style.boxShadow = layers.join(",") || "none";
     }
     $("p" + i).querySelector(".info").textContent =
@@ -1805,6 +1806,7 @@ function shuffleAndDeal() {
       const i = n % 2;
       later(() => {
         const el = backCard(0);
+        if (i === 1) el.classList.add("p2back");          // Player 2's cards are red
         const from = $("dealer").getBoundingClientRect(), to = stackEl(i, "draw").getBoundingClientRect();
         const flight = `translate(${to.left + to.width / 2 - from.left}px, ${to.top + to.height / 2 - from.top}px) scale(.85)`;
         el.animate([{ transform: "none" }, { transform: flight }], { duration: DEAL_FLY, easing: "ease-in" });
