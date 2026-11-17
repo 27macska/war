@@ -15,7 +15,7 @@
     margin: 0; padding: 16px; background: var(--bg); color: var(--ink);
     font: 16px/1.4 system-ui, "Segoe UI", sans-serif;
   }
-  main { max-width: 760px; margin: 0 auto; }
+  main { max-width: 760px; margin: 0 auto; position: relative; }
   header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; }
   h1 { margin: 0; font-size: 1.5rem; }
   .music, .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -78,6 +78,7 @@
   dialog {
     width: min(92vw, 440px); padding: 20px; border: 3px solid var(--duel); border-radius: 16px;
     background: #1c1917; color: #fff; text-align: center; box-shadow: 0 0 40px rgba(220, 38, 38, .6);
+    overflow-x: hidden;                   /* titles slam in oversized; that must not add a scrollbar */
   }
   dialog::backdrop { background: rgba(0, 0, 0, .65); }
   dialog h2 { margin: 0 0 4px; font-size: 2.2rem; letter-spacing: .08em; color: var(--accent); }
@@ -96,10 +97,11 @@
     margin-bottom: 12px; padding: 8px 12px; border-radius: 8px;
     background: rgba(0, 0, 0, .25); color: var(--muted); font-size: .9rem;
   }
-  .ready {
+  .badge {                                /* online: marks the player whose turn it is */
     margin-left: 8px; padding: 1px 8px; border-radius: 999px; vertical-align: 2px;
     background: var(--accent); color: var(--accent-ink); font-size: .75rem; font-weight: 700;
   }
+  .badge.theirs { background: none; color: var(--muted); box-shadow: inset 0 0 0 1px var(--muted); }
   #lobby { border-color: var(--accent); box-shadow: 0 0 40px rgba(250, 204, 21, .35); }
   #lobby h2 { font-size: 1.5rem; letter-spacing: 0; margin-bottom: 8px; }
   #lobby p { min-height: 0; margin-bottom: 12px; }
@@ -122,6 +124,20 @@
   #dealer { position: absolute; left: 50%; top: 50%; z-index: 20; pointer-events: none; }
   #dealer .card { box-shadow: 0 2px 6px rgba(0, 0, 0, .5); }
   .spark { position: absolute; width: 9px; height: 9px; margin: -4px 0 0 -4px; border-radius: 50%; opacity: 0; }
+  /* Close call: a round won by a single rank (see closeCall) */
+  #bannerBox {                            /* clips the banner while it slams in oversized, so the page never scrolls sideways */
+    position: absolute; inset: -90px -16px; overflow: hidden; pointer-events: none; z-index: 15;
+  }
+  #banner {
+    position: absolute; left: 50%; top: 50%; translate: -50% -50%; rotate: -3deg;
+    white-space: nowrap; text-align: center; padding: 8px 22px;
+    border: 3px solid var(--accent); border-radius: 14px; background: rgba(28, 25, 23, .94); color: #fff;
+    box-shadow: 0 0 30px rgba(250, 204, 21, .55);
+  }
+  #banner strong { display: block; font-size: 2rem; line-height: 1.15; letter-spacing: .08em; color: var(--accent); }
+  #tableSparks { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 30; }
+  .card.tense { z-index: 5; box-shadow: 0 0 16px 4px rgba(250, 204, 21, .7); }
+  .call { display: inline-block; color: var(--accent); font-size: 1.4em; letter-spacing: .06em; }
   @media (max-height: 560px) {           /* short windows: a compact popup that still fits */
     .dcards .flip { width: 36px; height: 52px; }
     dialog { padding: 10px; }
@@ -146,6 +162,13 @@
     dialog.impact { animation: quake .45s linear; }
     dialog.impact::backdrop { animation: flashBg .5s ease-out; }
     .spark { animation: spark .8s ease-out forwards; }
+    /* Close call: both cards strain, then the winner lunges, the loser recoils and the banner slams down */
+    .card.tense { animation: swell .5s ease-out forwards, quiver .08s linear infinite alternate; }
+    .card.clash.win { animation: clashWin .55s cubic-bezier(.2, 1.4, .4, 1); }
+    .card.clash.lose { animation: clashLose .55s ease-out; }
+    #banner.show { animation: stamp .4s cubic-bezier(.2, 1.5, .4, 1), halo .8s ease-out; }
+    .call { animation: stamp .4s cubic-bezier(.2, 1.5, .4, 1); }
+    main.jolt, dialog.jolt { animation: jolt .4s linear; }
   }
   @keyframes rise { from { transform: scale(.4); opacity: 0; } to { transform: scale(1.5); opacity: 1; } }
   @keyframes tremble { from { transform: rotate(-5deg); } to { transform: rotate(5deg); } }
@@ -168,6 +191,19 @@
   @keyframes shake {
     20% { transform: translateX(-8px) rotate(-3deg); } 40% { transform: translateX(8px) rotate(3deg); }
     60% { transform: translateX(-5px); } 80% { transform: translateX(5px); }
+  }
+  @keyframes swell { to { scale: 1.3; } }
+  @keyframes quiver { from { rotate: -5deg; } to { rotate: 5deg; } }
+  @keyframes clashWin { from { scale: 1.3; } 35% { scale: 1.9; rotate: -8deg; } }
+  @keyframes clashLose { from { scale: 1.3; } 35% { scale: .8; rotate: 12deg; translate: 0 8px; } }
+  @keyframes stamp { from { scale: 3.5; opacity: 0; } }
+  @keyframes halo {
+    from { box-shadow: 0 0 30px rgba(250, 204, 21, .55), 0 0 0 0 rgba(250, 204, 21, .9); }
+    to { box-shadow: 0 0 30px rgba(250, 204, 21, .55), 0 0 0 70px rgba(250, 204, 21, 0); }
+  }
+  @keyframes jolt {
+    15% { transform: translate(-7px, 4px) rotate(-.6deg); } 30% { transform: translate(6px, -5px) rotate(.6deg); }
+    45% { transform: translate(-5px, -3px); } 60% { transform: translate(4px, 3px); } 80% { transform: translate(-2px, 1px); }
   }
 </style>
 </head>
@@ -198,7 +234,7 @@
   </div>
 
   <section class="player" id="p0">
-    <div class="head"><span class="name"><span class="who">Player 1</span><span class="ready" hidden>Ready</span></span><span class="info"></span></div>
+    <div class="head"><span class="name"><span class="who">Player 1</span><span class="badge" hidden></span></span><span class="info"></span></div>
     <div class="table">
       <div class="piles">
         <div class="pile"><div class="stack" data-kind="draw"></div>Draw</div>
@@ -210,9 +246,10 @@
   <div id="mid">
     <div id="status"></div>
     <div id="dealer"></div>
+    <div id="bannerBox"><div id="banner" aria-hidden="true" hidden><strong>CLOSE CALL!</strong><span></span></div></div>
   </div>
   <section class="player" id="p1">
-    <div class="head"><span class="name"><span class="who">Player 2</span><span class="ready" hidden>Ready</span></span><span class="info"></span></div>
+    <div class="head"><span class="name"><span class="who">Player 2</span><span class="badge" hidden></span></span><span class="info"></span></div>
     <div class="table">
       <div class="piles">
         <div class="pile"><div class="stack" data-kind="draw"></div>Draw</div>
@@ -223,6 +260,7 @@
   </section>
 
   <div id="log"></div>
+  <div id="tableSparks"></div>
 </main>
 
 <dialog id="duel" aria-labelledby="duelTitle">
@@ -281,6 +319,7 @@ function newGame(cap, deck = shuffledDeck()) {
       { draw: deck.slice(26), won: [], refills: 0 },
     ],
     round: 0, cap, over: false, winner: null, reason: null,
+    lead: 0,          // who plays first in the next round when players take turns: the last round's winner
   };
 }
 
@@ -331,6 +370,7 @@ function playRound(g) {
     // Winner's cards first, then the loser's, onto the bottom of the won pile.
     const pot = [...laid[winner], ...laid[1 - winner]].map((x) => x.card);
     g.players[winner].won.push(...pot);
+    g.lead = winner;
   } else {
     for (const i of [0, 1]) g.players[i].won.push(...laid[i].map((x) => x.card));
   }
@@ -344,7 +384,8 @@ function playRound(g) {
     g.over = true; g.reason = "cap";
     g.winner = c[0] === c[1] ? null : (c[0] > c[1] ? 0 : 1);
   }
-  return { round: g.round, laid, up, winner, duels, potSize, lastCardStands };
+  const close = winner !== null && Math.abs(up[0].rank - up[1].rank) === 1;   // won by a single rank
+  return { round: g.round, laid, up, winner, duels, potSize, lastCardStands, close };
 }
 
 // ---------- Music (generated by the browser, no audio files) ----------
@@ -565,10 +606,18 @@ const music = (() => {
     if (s % 8 === 0) kick(t, 0.35);
   }
 
-  // The deciding card lands: a deep boom and a long crash.
-  function impact() {
+  // A short snare roll that swells: the moment before a close result is settled.
+  function swell(seconds) {
+    if (!ctx || !timer) return;
+    const n = Math.floor(seconds / 0.04);
+    for (let k = 0; k < n; k++) hit(ctx.currentTime + 0.02 + k * 0.04, 0.04 + 0.18 * k / n, 0.04, 1200);
+  }
+
+  // The deciding card lands: a deep boom and a long crash. `sting` adds a quick rising flourish for a close call.
+  function impact(sting = false) {
     if (!ctx || !timer) return;
     const t = ctx.currentTime + 0.02;
+    if (sting) [76, 81, 88].forEach((n, k) => tone("square", n, t + 0.05 + k * 0.07, 0.3, 0.1, bus.lead, 0.005));
     const o = ctx.createOscillator(), g = ctx.createGain();
     o.type = "triangle";
     o.frequency.setValueAtTime(130, t);
@@ -642,18 +691,18 @@ const music = (() => {
     },
     get mode() { return mode; },
     section(name) { setMode(name); },                      // "march", "duel", "roll" or "victory"
-    impact, ticks, hush,
+    impact, swell, ticks, hush,
   };
 })();
 
 // ---------- UI ----------
 const $ = (id) => document.getElementById(id);
 const NAMES = ["Player 1", "Player 2"];
-const TIMINGS = {                       // hold: cards stay on the table; fly: travel time to the pile
-  slow:    { hold: 900, fly: 600 },
-  normal:  { hold: 450, fly: 400 },
-  fast:    { hold: 90,  fly: 160 },
-  instant: { hold: 90,  fly: 160 },     // used only for single manual rounds
+const TIMINGS = {                       // hold: cards stay on the table; fly: travel time to the pile;
+  slow:    { hold: 900, fly: 600, tense: 800, banner: 1500 },   // tense: build-up before a close call;
+  normal:  { hold: 450, fly: 400, tense: 600, banner: 1200 },   // banner: how long the close call is shown
+  fast:    { hold: 90,  fly: 160, tense: 0,   banner: 450 },
+  instant: { hold: 90,  fly: 160, tense: 0,   banner: 450 },    // used only for single manual rounds
 };
 const SUSPENSE = 400;                   // pause before the deciding duel cards appear
 const REVEAL = 1480;                    // length of the deciding cards' flip animation (matches the CSS)
@@ -662,11 +711,13 @@ const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 let game;
 let shown;            // pile sizes drawn on screen; lags the game while a round is being shown
-let active = null;    // round being shown: { r, duel, placed, downs, waiting, flipping, resolved }
+let active = null;    // round being shown, see step(): { r, duel, lead, half, put, need, downs,
+                      //                                 waiting, flipping, tense, resolved }
 let timers = [];      // timeouts belonging to the round being shown
 let autoOn = false, autoTimer = null;
 let dealing = false;  // the shuffle-and-deal animation at the start of a game is running
 let net = null;       // online session, see "Online play" below; null when playing solo
+let pumping = false;  // the opponent's presses are being played right now (see pump)
 const online = () => !!(net && net.live);
 
 // Music that should be playing outside a duel: the fanfare once a player has won, otherwise the march.
@@ -684,6 +735,9 @@ const part = (r, i, duel, up) => r.laid[i].filter((e) => e.duel === duel && e.up
 function rankName(rank) {
   return { 8: "an 8", 11: "a jack", 12: "a queen", 13: "a king", 14: "an ace" }[rank] || "a " + rank;
 }
+
+const rankWord = (rank) => ({ 11: "Jack", 12: "Queen", 13: "King", 14: "Ace" }[rank] || String(rank));
+const beats = (r) => `${rankWord(r.up[r.winner].rank)} beats ${rankWord(r.up[1 - r.winner].rank)}`;
 
 // Restart a CSS animation that is tied to a class.
 function replay(el, cls) {
@@ -741,11 +795,12 @@ function flipEl(entry) {
   return flip;
 }
 
-// Sparks flying out of the winning card.
-function burst(el) {
-  const dlg = $("duel"), box = dlg.getBoundingClientRect(), c = el.getBoundingClientRect();
-  const x = c.left + c.width / 2 - box.left - dlg.clientLeft;
-  const y = c.top + c.height / 2 - box.top - dlg.clientTop + dlg.scrollTop;
+// Sparks flying out of the winning card. `layer` is the box they are drawn in:
+// the one inside the duel popup, or #tableSparks over the table.
+function burst(el, layer = $("sparks")) {
+  const box = layer.getBoundingClientRect(), c = el.getBoundingClientRect();
+  const x = c.left + c.width / 2 - box.left;
+  const y = c.top + c.height / 2 - box.top;
   const colors = ["#facc15", "#ffffff", "#f87171"];
   for (let k = 0; k < 18; k++) {
     const spark = document.createElement("div");
@@ -753,7 +808,7 @@ function burst(el) {
     spark.className = "spark";
     spark.style.cssText = `left:${x}px; top:${y}px; background:${colors[k % 3]}; ` +
       `--dx:${Math.cos(angle) * reach}px; --dy:${Math.sin(angle) * reach}px`;
-    $("sparks").append(spark);
+    layer.append(spark);
   }
 }
 
@@ -780,14 +835,15 @@ function openDuel(r, d, tied, downs) {
   }
   setTitle(duelTitle(d), "shake");
   $("duelText").textContent = `Both players flipped ${rankName(tied)}. ` +
-    (downs ? `Place ${downs} card${downs > 1 ? "s" : ""} face down, then the next card decides.`
+    (downs ? `${online() ? "Take turns to place" : "Place"} ${downs} card${downs > 1 ? "s" : ""} face down, ` +
+             "then the next card decides."
            : "The next card decides.");
   music.section("duel");
 }
 
 function closeDuel() {
   if ($("duel").open) $("duel").close();
-  $("duel").classList.remove("impact");
+  $("duel").classList.remove("impact", "jolt");
   $("sparks").replaceChildren();
   music.section(baseSection());
 }
@@ -802,6 +858,7 @@ function resultText(r) {
     ? `Round ${r.round}: tie with no cards left to duel.`
     : `Round ${r.round}: ${NAMES[r.winner]} takes ${r.potSize} cards` +
       (r.duels ? ` after ${r.duels} duel${r.duels > 1 ? "s" : ""}.` : ".");
+  if (r.close) text += ` Close call: ${rankName(r.up[r.winner].rank)} beat ${rankName(r.up[1 - r.winner].rank)}.`;
   r.lastCardStands.forEach((s, i) => {
     if (s) text += ` ${NAMES[i]} ran out, so their last card stood.`;
   });
@@ -818,55 +875,89 @@ function resultText(r) {
 function updateControls() {
   const a = active, on = online();
   const over = game.over && (!a || a.resolved);    // don't give the ending away mid-duel
-  const open = on && pointOpen();                  // online: the game is waiting for both players to press
-  const waitingForThem = open && net.pressed;
+  const turn = on ? turnSeat() : null;             // online: the player whose press the game is waiting for
+  const theirs = turn !== null && turn !== net.me;
+  const duelCard = () => {                         // online this counts your own cards, solo the presses
+    if (on) return `Place duel card ${a.put[net.me] + 1} of ${a.need[net.me]}`;
+    const left = Math.max(a.need[0] - a.put[0], a.need[1] - a.put[1]);
+    return `Place duel card ${a.downs - left + 1} of ${a.downs}`;
+  };
   const label = dealing ? "Skip shuffle"
-              : waitingForThem ? "Waiting for opponent…"
-              : a && a.waiting ? `Place duel card ${a.placed + 1} of ${a.downs}`
+              : a && a.tense ? "So close…"
               : a && a.flipping ? "Flipping…"
+              : theirs ? "Opponent's turn…"
+              : a && a.waiting ? duelCard()
               : !on ? "Next round"
               : over ? "Game over"
-              : net.started ? "Flip your card" : "Waiting for the host…";
-  $("next").disabled = over || waitingForThem || (on && !net.started);
+              : net.started ? "Play your card" : "Waiting for the host…";
+  $("next").disabled = over || theirs || (on && !net.started);
   $("next").textContent = label;
-  $("next").classList.toggle("duel", !!a && !a.resolved);
+  $("next").classList.toggle("duel", !!a && a.duel > 0 && !a.resolved);
   $("duelBtn").textContent = label;
-  $("duelBtn").disabled = !(a && a.waiting) || waitingForThem;
+  $("duelBtn").disabled = !(a && a.waiting) || theirs;
   $("duelBtn").hidden = !a || a.resolved;
   $("auto").disabled = over || dealing;
   $("auto").textContent = autoOn ? "Pause" : "Auto-play";
   $("new").disabled = on && !over;                 // online: no restarting in the middle of a game
   $("cap").disabled = on && (net.me === 1 || !over);   // online: the host sets it, between games
   for (const i of [0, 1]) {
-    const seat = `Player ${i + 1}` + (on ? (i === net.me ? " (you)" : " (opponent)") : "");
-    const ready = open && (i === net.me ? net.pressed : net.remotePoint >= net.point);
+    const mine = on && i === net.me;
+    const seat = `Player ${i + 1}` + (on ? (mine ? " (you)" : " (opponent)") : "");
+    const badge = $("p" + i).querySelector(".badge");
     $("p" + i).classList.toggle("winner", over && game.winner === i);
     $("p" + i).querySelector(".who").textContent = seat;
-    $("p" + i).querySelector(".ready").hidden = !ready;
-    $("dn" + i).textContent = seat + (ready ? " · ready" : "");
+    badge.hidden = turn !== i;
+    badge.textContent = mine ? "Your turn" : "Their turn";
+    badge.classList.toggle("theirs", !mine);
+    $("dn" + i).textContent = seat + (turn !== i ? "" : mine ? " · your turn" : " · their turn");
+  }
+  if (on && turn === net.me) {                     // keep the keyboard on the button it is your turn to press
+    const btn = $("duel").open ? $("duelBtn") : $("next"), at = document.activeElement;
+    if (at === document.body || at === $("next") || at === $("duelBtn")) btn.focus({ preventScroll: true });
   }
 }
 
 // --- Showing a round: opening flip, then each duel one button press at a time, then the pot flies ---
 
-function step() {
+// Start a round. Solo, both players flip at once. Online they take turns: `seat` plays first,
+// and the other player's card is only shown once they press (see follow).
+// `active` describes the round on screen:
+//   lead: who played first            half: only the first card of the opening flip is down so far
+//   duel: the duel being played (0 = none yet)
+//   need / put: face-down cards each player must place in this duel, and has placed; downs: the larger `need`
+//   waiting: a face-down card is due   flipping: the deciding cards are turning over
+//   tense: a close call is building    resolved: the winner is showing
+function step(seat = null) {
   if (active) settle();                  // skip the rest of a round still being shown
   if (game.over) return;
   if (!online()) game.cap = capValue();  // online, the cap is fixed when the host deals
-  const r = playRound(game);
-  active = { r, duel: 0, placed: 0, downs: 0, waiting: false, flipping: false, resolved: false };
-  for (const i of [0, 1]) {
-    laidEl(i).replaceChildren();
-    place(i, r.laid[i][0]);
-  }
+  const r = playRound(game), first = seat === null ? 0 : seat;
+  active = { r, duel: 0, lead: first, half: true, put: [0, 0], need: [0, 0], downs: 0,
+             waiting: false, flipping: false, tense: false, resolved: false };
+  for (const i of [0, 1]) laidEl(i).replaceChildren();
+  place(first, r.laid[first][0]);
+  if (seat === null) { follow(); return; }
+  drawPiles();
+  const mine = seat === net.me;
+  setStatus(`Round ${r.round}: ${mine ? "You" : "Your opponent"} played ${rankName(r.laid[seat][0].card.rank)}. ` +
+            (mine ? "Waiting for your opponent…" : "Your turn."));
+  updateControls();
+}
+
+// The second card of the opening flip goes down, and the round carries on from there.
+function follow() {
+  const a = active, r = a.r, i = 1 - a.lead;
+  a.half = false;
+  place(i, r.laid[i][0]);
   drawPiles();
   if (r.duels > 0) beginDuel(1); else resolve();
 }
 
 function beginDuel(d) {
   const a = active, r = a.r;
-  a.duel = d; a.placed = 0;
-  a.downs = Math.max(part(r, 0, d, false).length, part(r, 1, d, false).length);
+  a.duel = d; a.put = [0, 0];
+  a.need = [0, 1].map((i) => part(r, i, d, false).length);
+  a.downs = Math.max(...a.need);
   const tied = r.laid[0].filter((e) => e.up && e.duel < d).pop().card.rank;
   a.waiting = a.downs > 0;
   a.flipping = !a.waiting;               // nobody has a card to place face down: go straight to the flip
@@ -876,18 +967,19 @@ function beginDuel(d) {
   updateControls();
   $("duelBtn").focus({ preventScroll: true });
   $("duel").scrollTop = 0;
+  pump();                                // online: the opponent may already have placed their first card
 }
 
-// One button press: each player places their next face-down card.
-function advanceDuel() {
+// One button press. Solo, each player places their next face-down card; online, only `seat` does.
+function advanceDuel(seat = null) {
   const a = active, r = a.r;
   for (const i of [0, 1]) {
-    const entry = part(r, i, a.duel, false)[a.placed];
-    if (entry) place(i, entry);          // a player short on cards places fewer
+    if (seat !== null && seat !== i) continue;
+    const entry = part(r, i, a.duel, false)[a.put[i]];
+    if (entry) { place(i, entry); a.put[i]++; }    // a player short on cards places fewer
   }
-  a.placed++;
   drawPiles();
-  if (a.placed >= a.downs) {
+  if (a.put[0] >= a.need[0] && a.put[1] >= a.need[1]) {
     a.waiting = false; a.flipping = true;
     later(flipDuel, SUSPENSE);
   }
@@ -914,26 +1006,43 @@ function flipDuel() {
   }, dramatic ? REVEAL : 0);
 }
 
-// The round's winner is now visible on the table.
+// Every card of the round is on the table. A close call (won by a single rank) is held back
+// for a moment first, while both cards strain against each other over a drum roll.
 function resolve() {
-  const a = active, r = a.r;
-  a.resolved = true;
-  if (r.winner !== null) laidEl(r.winner).lastElementChild.classList.add("best");
+  const a = active, r = a.r, { tense } = timings();
+  if (!r.close || reduceMotion || !tense || $("duel").open) { announce(); return; }
+  a.tense = true;
+  for (const i of [0, 1]) laidEl(i).lastElementChild.classList.add("tense");
+  setStatus(`Round ${r.round}: ${rankName(r.up[0].rank)} against ${rankName(r.up[1].rank)}…`);
+  music.swell(tense / 1000);
+  updateControls();
+  later(announce, tense);
+}
+
+// The round's winner is now visible on the table.
+function announce() {
+  const a = active, r = a.r, w = r.winner, t = timings();
+  const drama = r.close && !reduceMotion;
+  a.tense = false; a.resolved = true;
+  if (w !== null) laidEl(w).lastElementChild.classList.add("best");
   setStatus(resultText(r));
   updateControls();
-  const { hold } = timings();
-  const finish = () => {
-    if (r.winner === null || reduceMotion) {     // no flight: leave the cards on the table
+  const finish = (extra = 0) => {
+    if (w === null || reduceMotion) {            // no flight: leave the cards on the table
       settle(false);
-      afterRound(hold + 200);
+      afterRound(t.hold + 200);
     } else {
-      later(() => collect(r, () => { settle(); afterRound(60); }), hold);
+      later(() => collect(r, () => { settle(); afterRound(60); }), t.hold + extra);
     }
   };
-  if (!$("duel").open) { music.section(baseSection()); finish(); return; }
+  if (!$("duel").open) {
+    music.section(baseSection());
+    if (drama) closeCall(r);
+    finish(drama ? t.banner : 0);
+    return;
+  }
   // Show who won the duel in the popup for a moment, then close it and carry on.
   music.section("duel");
-  const w = r.winner;
   if (w === null) {
     setTitle("NO WINNER", "slam");
     $("duelText").textContent = "Nobody has cards left to continue.";
@@ -945,8 +1054,38 @@ function resolve() {
     $("duelText").textContent = `${NAMES[w]} wins the duel and takes all ${r.potSize} cards.`;
     music.impact();
     if (!reduceMotion) burst(best);
+    if (drama) later(() => {                               // a beat later the close call lands as a second blow
+      const call = document.createElement("strong");
+      call.className = "call";
+      call.textContent = "CLOSE CALL!";
+      $("duelText").replaceChildren(call, ` ${beats(r)}. ${NAMES[w]} takes all ${r.potSize} cards.`);
+      replay($("duel"), "jolt");
+      burst(best);
+      music.impact(true);
+    }, 600);
   }
-  later(() => { closeDuel(); finish(); }, DUEL_RESULT);
+  later(() => { closeDuel(); finish(); }, DUEL_RESULT + (drama ? 800 : 0));
+}
+
+// A close call on the table: the winning card lunges, the loser recoils, and a banner slams down between them.
+function closeCall(r) {
+  const win = laidEl(r.winner).lastElementChild, lose = laidEl(1 - r.winner).lastElementChild;
+  win.classList.remove("tense");
+  lose.classList.remove("tense");
+  win.classList.add("win", "clash");
+  lose.classList.add("lose", "clash");
+  $("banner").lastElementChild.textContent = beats(r);
+  $("banner").hidden = false;
+  replay($("banner"), "show");
+  $("tableSparks").replaceChildren();
+  burst(win, $("tableSparks"));
+  replay(document.querySelector("main"), "jolt");
+  music.impact(true);
+}
+
+function clearCloseCall() {
+  $("banner").hidden = true;
+  $("tableSparks").replaceChildren();
 }
 
 // Fly every card on the table into the winner's won pile, which grows as each one lands.
@@ -955,7 +1094,7 @@ function collect(r, done) {
   const cards = [...laidEl(w).children, ...laidEl(1 - w).children];  // winner's cards land first
   const { fly } = timings();
   const stagger = Math.min(fly * 0.15, 600 / cards.length);
-  cards.forEach((el) => el.classList.remove("deal"));
+  cards.forEach((el) => el.classList.remove("deal", "tense", "clash"));
   const t = target.getBoundingClientRect();
   cards.forEach((el, k) => {
     const b = el.getBoundingClientRect();
@@ -981,6 +1120,7 @@ function settle(clearTable = true) {
   if (active) logRound(active.r);
   active = null;
   closeDuel();
+  clearCloseCall();
   if (clearTable) for (const i of [0, 1]) laidEl(i).replaceChildren();
   shown = realCounts();
   drawPiles();
@@ -993,13 +1133,14 @@ function afterRound(delay) {
     else autoTimer = setTimeout(step, delay);
   }
   updateControls();
+  pump();                                // online: the opponent may already have played their next card
 }
 
 function logRound(r) {
   const faces = (i) => r.laid[i].filter((x) => x.up).map((x) => rankLabel(x.card.rank) + x.card.suit).join(" → ");
   const line = document.createElement("div");
   line.textContent = `#${r.round}  P1 ${faces(0)}  |  P2 ${faces(1)}  —  ` +
-    (r.winner === null ? "tie" : `${NAMES[r.winner]} +${r.potSize}`);
+    (r.winner === null ? "tie" : `${NAMES[r.winner]} +${r.potSize}`) + (r.close ? " · close call" : "");
   $("log").prepend(line);
   while ($("log").childElementCount > 200) $("log").lastChild.remove();
 }
@@ -1039,8 +1180,9 @@ function start(deck) {
   timers = [];
   active = null;
   game = newGame(capValue(), deck);
-  if (net) Object.assign(net, { point: 0, pressed: false, remotePoint: -1, started: online() });
+  if (net) Object.assign(net, { point: 0, remotePoint: -1, started: online() });
   closeDuel();                           // also puts the music back on the march
+  clearCloseCall();
   for (const i of [0, 1]) laidEl(i).replaceChildren();
   $("log").replaceChildren();
   shuffleAndDeal();
@@ -1114,26 +1256,29 @@ function finishDeal() {
   $("dealer").replaceChildren();
   shown = realCounts();
   drawPiles();
-  setStatus(online() ? "Each round is played once both of you have pressed Flip your card."
-                     : "Press Next round to flip the first cards.");
+  setStatus(!online() ? "Press Next round to flip the first cards."
+          : (game.lead === net.me ? "You play" : "Your opponent plays") +
+            " the first card. After that, the winner of each round plays first.");
   updateControls();
+  pump();                                // online: the opponent may have played while the cards were being dealt
 }
 
 // ---------- Online play: two browsers connected directly to each other (PeerJS / WebRTC) ----------
 // The host shuffles and sends the deck. After that each browser runs the same game by itself and
-// the two only exchange button presses: a round, or a duel card, goes ahead once both have pressed.
+// the two only exchange button presses. The players take turns: one plays a card, then the other.
+// The host plays first in the first round; after that the winner of a round plays first in the next.
 
 const PEERJS_URL = "https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js";
 const PEERJS_SRI = "sha384-x0YgkOr/3UOZP2CRDxGW9e0Q+2Qjyr3uJrm4xU32Y7ZCNAo7Cc7bjhrZMi/dwczu";
 const ROOM_PREFIX = "war-card-game-";    // keeps these rooms apart from other apps on the shared PeerJS service
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";       // no 0/O or 1/I, which are easy to mix up
-const PROTOCOL = 1;                      // raise this whenever the messages or the game rules change
+const PROTOCOL = 2;                      // raise this whenever the messages or the game rules change
 
-// Online session (`net`): { peer, conn, me, code, live, started, gameNo, point, pressed, remotePoint }
+// Online session (`net`): { peer, conn, me, code, live, started, gameNo, point, remotePoint }
 //   me: 0 = host (Player 1), 1 = guest (Player 2)      live: the two browsers are connected
 //   started: the host's deck has arrived               gameNo: which game of this session this is
-//   point: how many press points this game has used    pressed: I have pressed for the current one
-//   remotePoint: the latest press point the opponent has pressed for
+//   point: how many presses, by either player, have been played in this game so far
+//   remotePoint: the number of the latest press the opponent has sent; it may not have been played here yet
 
 // The online library is only fetched when someone chooses to play online, so solo play works offline.
 function loadPeerJS() {
@@ -1150,7 +1295,7 @@ function loadPeerJS() {
 }
 
 function newSession(peer, me, code) {
-  net = { peer, conn: null, me, code, live: false, started: false, gameNo: 0, point: 0, pressed: false, remotePoint: -1 };
+  net = { peer, conn: null, me, code, live: false, started: false, gameNo: 0, point: 0, remotePoint: -1 };
   return net;
 }
 
@@ -1258,6 +1403,7 @@ function endSession(message = "") {
     try { session.peer.destroy(); } catch (e) { /* already gone */ }
   }
   document.body.classList.remove("online");
+  if (active && active.half) follow();   // the round was waiting for its second card: show it and carry on solo
   if ($("lobby").open) { showLobby("choose"); lobbyStatus(message); showNet(); }
   else showNet(message);
   updateControls();
@@ -1268,7 +1414,8 @@ function showNet(message = "") {
   $("online").textContent = on ? "Leave online game" : "Play online";
   $("net").hidden = !on && !message;
   $("net").textContent = on
-    ? `Online game · room ${net.code} · you are Player ${net.me + 1}. A round is played once you have both pressed.`
+    ? `Online game · room ${net.code} · you are Player ${net.me + 1}. ` +
+      "Take turns playing a card: the winner of a round plays first in the next."
     : message;
 }
 
@@ -1304,36 +1451,57 @@ function receive(m) {
     net.gameNo = m.g;
     $("cap").value = Math.max(1, parseInt(m.cap, 10) || 3);
     start(m.deck.map((c) => ({ rank: c.rank, suit: c.suit })));
-  } else if (m.t === "press" && m.g === net.gameNo && m.p === net.point) {
-    net.remotePoint = m.p;                                   // the opponent pressed for the current point
-    tryAdvance();
+  } else if (m.t === "press" && m.g === net.gameNo && Number.isInteger(m.p) && m.p >= net.point) {
+    net.remotePoint = Math.max(net.remotePoint, m.p);        // played as soon as this screen is ready for it
+    pump();
   } else if (m.t === "new" && net.me === 0 && game.over) {   // the guest asked for another game
     hostStart();
   }
 }
 
-// A press point is a moment the game waits for both players: the start of a round,
-// or each face-down card of a duel.
-function pointOpen() {
-  if (dealing || !net.started) return false;
-  return active ? active.waiting || (active.resolved && !game.over) : !game.over;
+// Whose press the game is waiting for (0 or 1), or null while cards are moving by themselves.
+function turnSeat() {
+  const a = active;
+  if (dealing || !net.started) return null;
+  if (!a || a.resolved) return game.over ? null : game.lead;   // a new round: the last winner plays first
+  if (a.half) return 1 - a.lead;                               // the second card of the opening flip
+  return a.waiting ? duelTurn(a) : null;                       // a face-down duel card
+}
+
+// Whose face-down card comes next in a duel: the player who opened the round, then the other,
+// and so on. A player with no cards left to place is passed over.
+function duelTurn(a) {
+  const first = a.lead, second = 1 - first;
+  const left = (i) => a.need[i] - a.put[i];
+  return left(first) > 0 && (a.put[first] <= a.put[second] || left(second) === 0) ? first : second;
 }
 
 function localPress() {
-  if (!pointOpen() || net.pressed) return;
-  net.pressed = true;
+  if (turnSeat() !== net.me) return;
   send({ t: "press", g: net.gameNo, p: net.point });
-  tryAdvance();
+  play(net.me);
 }
 
-function tryAdvance() {
-  if (pointOpen() && net.pressed && net.remotePoint >= net.point) {
-    net.point++;
-    net.pressed = false;
-    if (active && active.waiting) advanceDuel(); else step();
-    if ($("duel").open && !$("duelBtn").disabled) $("duelBtn").focus({ preventScroll: true });
-  } else {
-    updateControls();
+// Carry out one press, yours or the opponent's.
+function play(seat) {
+  const a = active;
+  net.point++;
+  if (a && a.half) follow();
+  else if (a && a.waiting) advanceDuel(seat);
+  else step(seat);
+}
+
+// Play the opponent's presses that have arrived. Each one waits until this screen has finished
+// showing the round before it, so their press never cuts your view of a result short.
+function pump() {
+  if (pumping || !online()) return;
+  pumping = true;
+  try {
+    const them = 1 - net.me;
+    while (online() && net.remotePoint >= net.point && turnSeat() === them && !(active && active.resolved))
+      play(them);
+  } finally {
+    pumping = false;
   }
 }
 
