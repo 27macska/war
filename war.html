@@ -67,6 +67,23 @@
   .card.best { outline: 3px solid var(--accent); }
   .card.deal { animation: deal .14s ease-out; }
   @keyframes deal { from { transform: translateX(-24px); opacity: 0; } }
+  /* Draw 3 mode: the hand each player picks from */
+  .hand { margin-top: 10px; }
+  .hand > span { display: block; font-size: .8rem; color: var(--muted); margin-bottom: 4px; }
+  .hand > span.go { color: var(--accent); font-weight: 700; }
+  .hcards { display: flex; flex-wrap: wrap; gap: 8px; min-height: 76px; padding-top: 10px; }
+  .hcards .card { transition: transform .12s, box-shadow .12s; }
+  button.card.pick {
+    padding: 0; border: 0; border-radius: 7px; background: var(--card); color: var(--card-ink);
+    font-size: 1.15rem; cursor: pointer;
+  }
+  button.card.pick.red { color: var(--red); }
+  button.card.pick:disabled { opacity: 1; cursor: default; }
+  button.card.pick:not(:disabled) { box-shadow: 0 0 0 2px var(--accent), 0 2px 6px rgba(0,0,0,.4); }
+  button.card.pick:not(:disabled):hover, button.card.pick:not(:disabled):focus-visible {
+    transform: translateY(-8px); box-shadow: 0 0 0 3px var(--accent), 0 8px 14px rgba(0,0,0,.5); outline: none;
+  }
+  .hcards .card.chosen { transform: translateY(-10px); outline: 3px solid var(--accent); }
   #status { text-align: center; padding: 12px 4px; font-weight: 600; min-height: 3.2em; }
   #status.duel { color: var(--accent); font-size: 1.1rem; }
   #log {
@@ -279,6 +296,12 @@
         <option value="instant">Instant</option>
       </select>
     </label>
+    <label>Mode
+      <select id="mode">
+        <option value="classic" selected>Classic</option>
+        <option value="draw3">Draw 3</option>
+      </select>
+    </label>
     <label>Deck passes <input id="cap" type="number" min="1" value="3"></label>
     <button id="new" class="secondary">New game</button>
   </div>
@@ -292,6 +315,7 @@
       </div>
       <div class="laid"></div>
     </div>
+    <div class="hand" hidden><span></span><div class="hcards"></div></div>
   </section>
   <div id="mid">
     <div id="status"></div>
@@ -307,6 +331,7 @@
       </div>
       <div class="laid"></div>
     </div>
+    <div class="hand" hidden><span></span><div class="hcards"></div></div>
   </section>
 
   <div id="log"></div>
@@ -319,6 +344,7 @@
   <p id="duelText"></p>
   <div class="drow"><span id="dn0">Player 1</span><div class="dcards" id="d0"></div></div>
   <div class="drow"><span id="dn1">Player 2</span><div class="dcards" id="d1"></div></div>
+  <div class="drow" id="duelHand" hidden><span>Your hand</span><div class="dcards"></div></div>
   <button id="duelBtn">Place duel card 1 of 3</button>
   <div id="sparks"></div>
 </dialog>
@@ -346,6 +372,7 @@
 // ---------- Game logic (no DOM) ----------
 const SUITS = ["♠", "♥", "♦", "♣"];
 const FACE_DOWN_PER_DUEL = 3;
+const HAND_SIZE = 3;                    // Draw 3 mode: cards each player holds to choose from
 
 function rankLabel(rank) {
   return { 11: "J", 12: "Q", 13: "K", 14: "A" }[rank] || String(rank);
@@ -363,18 +390,28 @@ function shuffledDeck() {
 }
 
 // `deck` is the 52 cards in dealing order. Online games pass in the host's deck so both screens match.
-function newGame(cap, deck = shuffledDeck()) {
-  return {
+// `mode`: "classic" (the top card is played) or "draw3" (each player holds a hand of 3 and picks
+// the card they play, and the deciding card of each duel; the face-down duel cards still come off the pile).
+function newGame(cap, deck = shuffledDeck(), mode = "classic") {
+  const g = {
     players: [
-      { draw: deck.slice(0, 26), won: [], refills: 0 },
-      { draw: deck.slice(26), won: [], refills: 0 },
+      { draw: deck.slice(0, 26), won: [], refills: 0, hand: [] },
+      { draw: deck.slice(26), won: [], refills: 0, hand: [] },
     ],
-    round: 0, cap, over: false, winner: null, reason: null,
+    round: 0, cap, over: false, winner: null, reason: null, mode,
     lead: 0,          // who plays first in the next round when players take turns: the last round's winner
   };
+  if (mode === "draw3") fillHands(g);
+  return g;
 }
 
-const count = (p) => p.draw.length + p.won.length;
+const count = (p) => p.draw.length + p.won.length + p.hand.length;
+
+// Draw 3 mode: top each hand back up to HAND_SIZE from the draw pile.
+function fillHands(g) {
+  for (const p of g.players)
+    while (p.hand.length < HAND_SIZE && p.draw.length + p.won.length > 0) p.hand.push(drawCard(p));
+}
 
 // Take the top card. When the draw pile is empty, the won pile becomes the
 // new draw pile in the order the cards were won (no shuffle).
@@ -389,14 +426,33 @@ const passesDone = (p) => p.refills + (p.draw.length === 0 ? 1 : 0);
 
 // Plays one whole round, duels included. Every card put on the table is recorded
 // with the duel it belongs to (0 = the opening flip) so the screen can replay it in steps.
-function playRound(g) {
+// Draw 3 mode: picks[i][d] is the index in player i's hand of the face-up card they play in duel d
+// (0 = the opening). A player holding one card plays it and one holding none plays off the pile,
+// without a pick. If a pick that is needed is missing, the round stops there and returns
+// { pending: d, choosing, hands, laid, ... }; that leaves `g` half played, so look ahead on a copy.
+function playRound(g, picks = [[], []]) {
   if (g.over) return null;
+  const hands = g.mode === "draw3";
   const laid = [[], []];                       // cards each player put on the table
   const up = [null, null];                     // each player's current face-up card
-  for (const i of [0, 1]) {
-    up[i] = drawCard(g.players[i]);
-    laid[i].push({ card: up[i], up: true, duel: 0 });
-  }
+  const choosing = () => g.players.map((p) => hands && p.hand.length >= 2);
+  const missing = (d) => choosing().some((c, i) => c && !Number.isInteger(picks[i][d]));
+  const pending = (d) => ({
+    round: g.round + 1, laid, up, winner: null, duels: d, potSize: 0, lastCardStands: [false, false],
+    pending: d, choosing: choosing(), hands: g.players.map((p) => p.hand.map((c) => ({ ...c }))),
+  });
+  const playUp = (i, d) => {                   // the face-up card: from the hand if holding any
+    const p = g.players[i], fromHand = hands && p.hand.length > 0;
+    let card;
+    if (!fromHand) card = drawCard(p);
+    else if (p.hand.length === 1) card = p.hand.pop();
+    else card = p.hand.splice(Math.max(0, Math.min(picks[i][d], p.hand.length - 1)), 1)[0];
+    up[i] = card;
+    laid[i].push({ card, up: true, duel: d, fromHand });
+  };
+
+  if (missing(0)) return pending(0);
+  for (const i of [0, 1]) playUp(i, 0);
 
   let duels = 0, winner = null;
   const lastCardStands = [false, false];
@@ -404,15 +460,17 @@ function playRound(g) {
     if (up[0].rank !== up[1].rank) { winner = up[0].rank > up[1].rank ? 0 : 1; break; }
     if (count(g.players[0]) === 0 && count(g.players[1]) === 0) break; // nobody can continue
     duels++;
+    const playing = [false, false];
     for (const i of [0, 1]) {
       const p = g.players[i];
-      const n = count(p);
-      if (n === 0) { lastCardStands[i] = true; continue; }  // out of cards: last card stays face up
-      const down = Math.min(FACE_DOWN_PER_DUEL, n - 1);     // always keep one card to flip
+      if (count(p) === 0) { lastCardStands[i] = true; continue; }  // out of cards: last card stays face up
+      playing[i] = true;
+      const pile = p.draw.length + p.won.length;
+      const down = Math.min(FACE_DOWN_PER_DUEL, hands && p.hand.length ? pile : pile - 1);  // always keep one card to flip
       for (let k = 0; k < down; k++) laid[i].push({ card: drawCard(p), up: false, duel: duels });
-      up[i] = drawCard(p);
-      laid[i].push({ card: up[i], up: true, duel: duels });
     }
+    if (missing(duels)) return pending(duels);
+    for (const i of [0, 1]) if (playing[i]) playUp(i, duels);
   }
 
   g.round++;
@@ -425,8 +483,9 @@ function playRound(g) {
   } else {
     for (const i of [0, 1]) g.players[i].won.push(...laid[i].map((x) => x.card));
   }
+  if (hands) fillHands(g);
 
-  const c = [count(g.players[0]), count(g.players[1])];
+  const c =[count(g.players[0]), count(g.players[1])];
   if (winner === null) {
     g.over = true; g.reason = "stalemate";
   } else if (c[1 - winner] === 0) {
@@ -438,6 +497,27 @@ function playRound(g) {
   const close = winner !== null && Math.abs(up[0].rank - up[1].rank) === 1;   // won by a single rank
   const kingslayer = close && up[winner].rank === 14;                         // an ace beat a king
   return { round: g.round, laid, up, winner, duels, potSize, lastCardStands, close, kingslayer };
+}
+
+// Draw 3 mode: the computer's pick. It can't see the other hand, so it plays its best card in a duel
+// (the pot is big) and otherwise mixes it up, usually holding its best card back.
+function cpuChoose(hand, duel) {
+  const order = hand.map((c, k) => k).sort((a, b) => hand[a].rank - hand[b].rank);
+  if (duel > 0) return order[order.length - 1];
+  const roll = Math.random();
+  return order[roll < 0.3 ? 0 : roll < 0.8 ? Math.floor((order.length - 1) / 2) : order.length - 1];
+}
+
+// Draw 3 mode: a whole round with the computer picking for both players (used by instant auto-play).
+function cpuRound(g) {
+  const picks = [[], []];
+  for (;;) {
+    const p = playRound(structuredClone(g), picks);
+    if (p.pending === undefined) break;
+    for (const i of [0, 1])
+      if (p.choosing[i] && !Number.isInteger(picks[i][p.pending])) picks[i][p.pending] = cpuChoose(p.hands[i], p.pending);
+  }
+  return playRound(g, picks);
 }
 
 // ---------- Music (generated by the browser, no audio files) ----------
@@ -795,6 +875,126 @@ let net = null;       // online session, see "Online play" below; null when play
 let pumping = false;  // the opponent's presses are being played right now (see pump)
 const online = () => !!(net && net.live);
 
+// Draw 3 mode. Picks are kept in `book` under "round:duel:seat" (index in that hand) until the round
+// they belong to can be played. A round is only played for real once every pick it needs is in;
+// until then the screen shows a look-ahead copy (see advance). Nobody sees a pick before both are in.
+let book = {};
+let pickState = null; // the picks being waited for: { no, d, needs: [bool, bool], chosen: [index or undefined] }
+let shownHands = [[], []];                 // hands drawn on screen; lag the game like `shown`
+const draw3 = () => !!(game && game.mode === "draw3");
+const humanSeat = () => (online() ? net.me : 0);
+const pickKey = (no, d, i) => `${no}:${d}:${i}`;
+const canPick = () => !!(draw3() && pickState && !dealing && pickState.needs[humanSeat()] &&
+                         pickState.chosen[humanSeat()] === undefined);
+
+function picksFor(no) {
+  return [0, 1].map((i) => {
+    const list = [];
+    for (let d = 0; d < 60; d++) if (book[pickKey(no, d, i)] !== undefined) list[d] = book[pickKey(no, d, i)];
+    return list;
+  });
+}
+
+// Play the current round as far as the picks so far allow. Once nothing is missing it is played on
+// the real game; until then on a copy, which shows how far the round has got.
+function advance() {
+  const picks = picksFor(game.round + 1);
+  const ahead = playRound(structuredClone(game), picks);
+  return ahead.pending === undefined ? playRound(game, picks) : ahead;
+}
+
+// Move a Draw 3 round on once the picks it waits for are in. Called whenever that may have happened:
+// a pick made or received, a round finished, a duel reaching its deciding card. The computer picks
+// for Player 2 in solo play, and for you too while auto-play is on (or when `forceMe`: Next pressed).
+function tryProceed(forceMe = false) {
+  if (!draw3() || dealing) return;
+  let no, d;
+  if (!active) {
+    if (game.over) { pickState = null; renderHands(); updateControls(); return; }
+    no = game.round + 1; d = 0;
+  } else if (active.picking) {
+    no = active.r.round; d = active.duel;
+  } else return;
+  const auto = (i) => !online() && (i === 1 || autoOn || forceMe);
+  let ahead;
+  for (;;) {
+    ahead = playRound(structuredClone(game), picksFor(no));
+    if (ahead.pending !== d) break;
+    const due = [0, 1].filter((i) => ahead.choosing[i] && book[pickKey(no, d, i)] === undefined && auto(i));
+    if (!due.length) break;
+    for (const i of due) book[pickKey(no, d, i)] = cpuChoose(ahead.hands[i], d);
+  }
+  const chosen = [0, 1].map((i) => book[pickKey(no, d, i)]);
+  if (ahead.pending === d) {                         // still waiting on you or your opponent
+    pickState = { no, d, needs: ahead.choosing, chosen };
+    if (active) $("duelText").textContent = canPick()
+      ? "Pick your deciding card."
+      : "Waiting for your opponent to pick their deciding card…";
+    renderHands(); updateControls();
+    return;
+  }
+  // Solo: a round where you had nothing to choose waits for Next round rather than starting by itself.
+  if (!active && !online() && !autoOn && !forceMe && chosen[0] === undefined) {
+    pickState = { no, d, needs: [false, false], chosen };
+    renderHands(); updateControls();
+    return;
+  }
+  pickState = null;
+  if (!active) { step(); return; }
+  active.picking = false;
+  active.r = advance();
+  flipDuel();
+}
+
+// You clicked card `k` in your hand.
+function humanPick(k) {
+  if (!canPick()) return;
+  const { no, d } = pickState, me = humanSeat();
+  book[pickKey(no, d, me)] = k;
+  if (online()) send({ t: "pick", g: net.gameNo, n: no, d, k });
+  tryProceed();
+}
+
+// Draw both hands from `shownHands`: yours face up, the other face down. A picked card is lifted.
+function renderHands() {
+  const on3 = draw3(), me = humanSeat(), can = canPick(), ps = pickState;
+  for (const i of [0, 1]) {
+    const box = $("p" + i).querySelector(".hand");
+    box.hidden = !on3;
+    if (!on3) continue;
+    const mine = i === me, chosen = ps ? ps.chosen[i] : undefined;
+    const label = box.firstElementChild;
+    label.textContent = mine
+      ? (can ? (ps.d ? "Your hand · pick your deciding card" : "Your hand · pick a card")
+             : chosen !== undefined && ps.needs[1 - i] && ps.chosen[1 - i] === undefined ? "Your hand · waiting for your opponent…"
+             : "Your hand")
+      : (online() ? "Opponent's hand" : "Computer's hand") + (chosen !== undefined ? " · picked" : "");
+    label.className = mine && can ? "go" : "";
+    box.lastElementChild.replaceChildren(...shownHands[i].map((card, k) => handCard(card, k, mine, can, k === chosen)));
+  }
+  const inDuel = on3 && active && active.picking && ps && ps.needs[me];
+  $("duelHand").hidden = !inDuel;
+  if (inDuel) {
+    const chosen = ps.chosen[me];
+    $("duelHand").lastElementChild.replaceChildren(...shownHands[me].map((card, k) => handCard(card, k, true, can, k === chosen)));
+  }
+}
+
+function handCard(card, k, mine, can, chosen) {
+  if (!mine) {
+    const el = document.createElement("div");
+    el.className = "card down" + (chosen ? " chosen" : "");
+    return el;
+  }
+  const el = document.createElement("button"), red = card.suit === "♥" || card.suit === "♦";
+  el.className = "card pick" + (red ? " red" : "") + (chosen ? " chosen" : "");
+  el.innerHTML = `<span>${rankLabel(card.rank)}</span><span>${card.suit}</span>`;
+  el.setAttribute("aria-label", `Play ${rankWord(card.rank)} of ${card.suit}`);
+  el.disabled = !can;
+  el.onclick = () => humanPick(k);
+  return el;
+}
+
 // Music that should be playing outside a duel: the fanfare once a player has won, otherwise the march.
 const baseSection = () =>
   game && game.over && game.winner !== null && (!active || active.resolved) ? "victory" : "march";
@@ -846,7 +1046,8 @@ function drawPiles() {
       el.style.boxShadow = layers.join(",") || "none";
     }
     $("p" + i).querySelector(".info").textContent =
-      `Pass ${Math.min(shown[i].refills + 1, game.cap)} of ${game.cap} · ${shown[i].draw + shown[i].won} cards`;
+      `Pass ${Math.min(shown[i].refills + 1, game.cap)} of ${game.cap} · ` +
+      `${shown[i].draw + shown[i].won + (draw3() ? shownHands[i].length : 0)} cards`;
   }
 }
 
@@ -890,8 +1091,14 @@ function burst(el, layer = $("sparks")) {
 // Move one card from a player's piles on screen to the table (mirrors drawCard).
 function place(i, entry, inPopup = true) {
   const s = shown[i];
-  if (s.draw === 0) { s.draw = s.won; s.won = 0; s.refills++; pulse(stackEl(i, "draw")); }
-  s.draw--;
+  if (entry.fromHand) {                                    // Draw 3: the card leaves the hand, not the pile
+    const h = shownHands[i], k = h.findIndex((c) => c.rank === entry.card.rank && c.suit === entry.card.suit);
+    if (k >= 0) h.splice(k, 1);
+    renderHands();
+  } else {
+    if (s.draw === 0) { s.draw = s.won; s.won = 0; s.refills++; pulse(stackEl(i, "draw")); }
+    s.draw--;
+  }
   laidEl(i).append(cardEl(entry));
   if (inPopup && $("duel").open) {                         // the duel popup shows the same cards
     $("d" + i).append(cardEl(entry));
@@ -911,7 +1118,7 @@ function openDuel(r, d, tied, downs) {
   setTitle(duelTitle(d), "shake");
   $("duelText").textContent = `Both players flipped ${rankName(tied)}. ` +
     (downs ? `${online() ? "Take turns to place" : "Place"} ${downs} card${downs > 1 ? "s" : ""} face down, ` +
-             "then the next card decides."
+             (draw3() ? "then pick your deciding card." : "then the next card decides.")
            : "The next card decides.");
   music.section("duel");
 }
@@ -957,15 +1164,20 @@ function updateControls() {
     const left = Math.max(a.need[0] - a.put[0], a.need[1] - a.put[1]);
     return `Place duel card ${a.downs - left + 1} of ${a.downs}`;
   };
+  const d3 = draw3(), ps = pickState, idle = !a || a.resolved;
   const label = dealing ? "Skip shuffle"
               : a && a.tense ? "So close…"
+              : a && a.picking ? (canPick() ? "Pick your deciding card" : "Waiting for opponent…")
               : a && a.flipping ? "Flipping…"
               : theirs ? "Opponent's turn…"
               : a && a.waiting ? duelCard()
+              : d3 && idle && !over && !on ? (ps && ps.needs[0] ? "Play a random card" : "Next round")
+              : d3 && idle && !over && net.started ? (canPick() ? "Pick a card to play" : "Waiting for opponent…")
               : !on ? "Next round"
               : over ? "Game over"
               : net.started ? "Play your card" : "Waiting for the host…";
-  $("next").disabled = over || theirs || (on && !net.started);
+  $("next").disabled = over || theirs || (on && !net.started) || !!(a && a.picking) ||
+                       (d3 && on && !(a && a.waiting));
   $("next").textContent = label;
   $("next").classList.toggle("duel", !!a && a.duel > 0 && !a.resolved);
   $("duelBtn").textContent = label;
@@ -975,9 +1187,11 @@ function updateControls() {
   $("auto").textContent = autoOn ? "Pause" : "Auto-play";
   $("new").disabled = on && !over;                 // online: no restarting in the middle of a game
   $("cap").disabled = on && (net.me === 1 || !over);   // online: the host sets it, between games
+  $("mode").disabled = $("cap").disabled;
   for (const i of [0, 1]) {
     const mine = on && i === net.me;
-    const seat = `Player ${i + 1}` + (on ? (mine ? " (you)" : " (opponent)") : "");
+    const seat = `Player ${i + 1}` + (on ? (mine ? " (you)" : " (opponent)")
+                                         : d3 ? (i === 0 ? " (you)" : " (computer)") : "");
     const badge = $("p" + i).querySelector(".badge");
     $("p" + i).classList.toggle("winner", over && game.winner === i);
     $("p" + i).querySelector(".who").textContent = seat;
@@ -1006,9 +1220,9 @@ function step(seat = null) {
   if (active) settle();                  // skip the rest of a round still being shown
   if (game.over) return;
   if (!online()) game.cap = capValue();  // online, the cap is fixed when the host deals
-  const r = playRound(game), first = seat === null ? 0 : seat;
+  const r = draw3() ? advance() : playRound(game), first = seat === null ? 0 : seat;
   active = { r, duel: 0, lead: first, half: true, put: [0, 0], need: [0, 0], downs: 0,
-             waiting: false, flipping: false, tense: false, resolved: false };
+             waiting: false, flipping: false, picking: false, tense: false, resolved: false };
   for (const i of [0, 1]) laidEl(i).replaceChildren();
   place(first, r.laid[first][0]);
   if (seat === null) { follow(); return; }
@@ -1038,7 +1252,7 @@ function beginDuel(d) {
   a.flipping = !a.waiting;               // nobody has a card to place face down: go straight to the flip
   openDuel(r, d, tied, a.downs);
   setStatus(`Round ${r.round}: ${duelTitle(d)} Both players flipped ${rankName(tied)}.`, true);
-  if (a.flipping) later(flipDuel, SUSPENSE);
+  if (a.flipping) later(toFlip, SUSPENSE);
   updateControls();
   $("duelBtn").focus({ preventScroll: true });
   $("duel").scrollTop = 0;
@@ -1056,9 +1270,17 @@ function advanceDuel(seat = null) {
   drawPiles();
   if (a.put[0] >= a.need[0] && a.put[1] >= a.need[1]) {
     a.waiting = false; a.flipping = true;
-    later(flipDuel, SUSPENSE);
+    later(toFlip, SUSPENSE);
   }
   updateControls();
+}
+
+// The face-down cards are down. Draw 3: if the deciding cards still have to be picked, wait for that
+// (see tryProceed, which flips them once both picks are in); otherwise flip them now.
+function toFlip() {
+  const a = active;
+  if (a.r.pending === a.duel) { a.flipping = false; a.picking = true; tryProceed(); updateControls(); }
+  else flipDuel();
 }
 
 // The deciding cards. In the popup they rise face down over a drum roll, tremble,
@@ -1260,23 +1482,32 @@ function collect(r, done) {
 function settle(clearTable = true) {
   timers.forEach(clearTimeout);
   timers = [];
-  if (active) logRound(active.r);
+  if (active && active.r.pending === undefined) logRound(active.r);   // a half-picked round was never played
   active = null;
   closeDuel();
   clearCloseCall();
   if (clearTable) for (const i of [0, 1]) laidEl(i).replaceChildren();
   shown = realCounts();
+  syncHands();
   drawPiles();
   updateControls();
 }
 
+function syncHands() {
+  shownHands = game.players.map((p) => p.hand.map((c) => ({ ...c })));
+  renderHands();
+}
+
+const autoNext = () => (draw3() ? tryProceed() : step());
+
 function afterRound(delay) {
   if (autoOn) {
     if (game.over) autoOn = false;
-    else autoTimer = setTimeout(step, delay);
+    else autoTimer = setTimeout(autoNext, delay);
   }
   updateControls();
   pump();                                // online: the opponent may already have played their next card
+  if (!autoOn) tryProceed();             // Draw 3: the computer picks, or both picks are already in
 }
 
 function logRound(r) {
@@ -1290,9 +1521,11 @@ function logRound(r) {
 }
 
 function stopAuto() {
+  const was = autoOn;
   autoOn = false;
   clearTimeout(autoTimer);
   updateControls();
+  if (was) tryProceed();                 // Draw 3: hand the next pick back to you
 }
 
 function startAuto() {
@@ -1300,21 +1533,25 @@ function startAuto() {
     if (active) settle();
     game.cap = capValue();
     let r = null;
-    while (!game.over) { r = playRound(game); logRound(r); }
+    pickState = null;
+    while (!game.over) { r = draw3() ? cpuRound(game) : playRound(game); logRound(r); }
     if (r) {
       for (const i of [0, 1]) laidEl(i).replaceChildren(...r.laid[i].map((e) => cardEl(e)));
       if (r.winner !== null) laidEl(r.winner).lastElementChild.classList.add("best");
       setStatus(resultText(r));
     }
     shown = realCounts();
+    syncHands();
     drawPiles();
     updateControls();
     music.section(baseSection());
     return;
   }
   autoOn = true;
-  if (active) updateControls();          // carries on by itself once this round is finished
-  else step();
+  if (active) {                          // carries on by itself once this round is finished
+    updateControls();
+    if (active.picking) tryProceed();    // Draw 3: a duel waiting for your pick gets one
+  } else autoNext();
 }
 
 function start(deck) {
@@ -1323,7 +1560,11 @@ function start(deck) {
   timers.forEach(clearTimeout);
   timers = [];
   active = null;
-  game = newGame(capValue(), deck);
+  book = {};
+  pickState = null;
+  shownHands = [[], []];
+  game = newGame(capValue(), deck, $("mode").value === "draw3" ? "draw3" : "classic");
+  renderHands();
   if (net) Object.assign(net, { point: 0, remotePoint: -1, started: online() });
   closeDuel();                           // also puts the music back on the march
   clearCloseCall();
@@ -1399,12 +1640,16 @@ function finishDeal() {
   music.hush();
   $("dealer").replaceChildren();
   shown = realCounts();
+  syncHands();
   drawPiles();
-  setStatus(!online() ? "Press Next round to flip the first cards."
+  setStatus(draw3()
+          ? "Pick a card to play."
+          : !online() ? "Press Next round to flip the first cards."
           : (game.lead === net.me ? "You play" : "Your opponent plays") +
             " the first card. After that, the winner of each round plays first.");
   updateControls();
   pump();                                // online: the opponent may have played while the cards were being dealt
+  tryProceed();                          // Draw 3: the computer picks its first card
 }
 
 // ---------- Online play: two browsers connected directly to each other (PeerJS / WebRTC) ----------
@@ -1416,7 +1661,7 @@ const PEERJS_URL = "https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js";
 const PEERJS_SRI = "sha384-x0YgkOr/3UOZP2CRDxGW9e0Q+2Qjyr3uJrm4xU32Y7ZCNAo7Cc7bjhrZMi/dwczu";
 const ROOM_PREFIX = "war-card-game-";    // keeps these rooms apart from other apps on the shared PeerJS service
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";       // no 0/O or 1/I, which are easy to mix up
-const PROTOCOL = 2;                      // raise this whenever the messages or the game rules change
+const PROTOCOL = 3;                     // raise this whenever the messages or the game rules change
 
 // Online session (`net`): { peer, conn, me, code, live, started, gameNo, point, remotePoint }
 //   me: 0 = host (Player 1), 1 = guest (Player 2)      live: the two browsers are connected
@@ -1548,6 +1793,7 @@ function endSession(message = "") {
   }
   document.body.classList.remove("online");
   if (active && active.half) follow();   // the round was waiting for its second card: show it and carry on solo
+  tryProceed();                          // Draw 3: the computer takes over Player 2's picks
   if ($("lobby").open) { showLobby("choose"); lobbyStatus(message); showNet(); }
   else showNet(message);
   updateControls();
@@ -1559,7 +1805,8 @@ function showNet(message = "") {
   $("net").hidden = !on && !message;
   $("net").textContent = on
     ? `Online game · room ${net.code} · you are Player ${net.me + 1}. ` +
-      "Take turns playing a card: the winner of a round plays first in the next."
+      (draw3() ? "Draw 3: pick a card to play."
+               : "Take turns playing a card: the winner of a round plays first in the next.")
     : message;
 }
 
@@ -1581,8 +1828,9 @@ function validDeck(deck) {
 function hostStart() {
   const deck = shuffledDeck();
   net.gameNo++;
-  send({ t: "start", v: PROTOCOL, g: net.gameNo, deck, cap: capValue() });
+  send({ t: "start", v: PROTOCOL, g: net.gameNo, deck, cap: capValue(), mode: $("mode").value });
   start(deck);
+  showNet();
 }
 
 function receive(m) {
@@ -1594,7 +1842,12 @@ function receive(m) {
     }
     net.gameNo = m.g;
     $("cap").value = Math.max(1, parseInt(m.cap, 10) || 3);
+    $("mode").value = m.mode === "draw3" ? "draw3" : "classic";
     start(m.deck.map((c) => ({ rank: c.rank, suit: c.suit })));
+    showNet();
+  } else if (m.t === "pick" && m.g === net.gameNo && [m.n, m.d, m.k].every(Number.isInteger)) {
+    const key = pickKey(m.n, m.d, 1 - net.me);               // the opponent's hidden pick
+    if (book[key] === undefined) { book[key] = m.k; tryProceed(); }
   } else if (m.t === "press" && m.g === net.gameNo && Number.isInteger(m.p) && m.p >= net.point) {
     net.remotePoint = Math.max(net.remotePoint, m.p);        // played as soon as this screen is ready for it
     pump();
@@ -1607,6 +1860,7 @@ function receive(m) {
 function turnSeat() {
   const a = active;
   if (dealing || !net.started) return null;
+  if (draw3() && !(a && a.waiting)) return null;               // Draw 3: picks, not turns, outside the face-down cards
   if (!a || a.resolved) return game.over ? null : game.lead;   // a new round: the last winner plays first
   if (a.half) return 1 - a.lead;                               // the second card of the opening flip
   return a.waiting ? duelTurn(a) : null;                       // a face-down duel card
@@ -1674,9 +1928,16 @@ $("next").onclick = () => {
   if (online()) { localPress(); return; }
   if (active && active.waiting) { advanceDuel(); return; }   // auto-play stays on through a duel
   if (active && !active.resolved) return;                    // deciding card is about to flip
+  if (draw3()) {                                             // play a random card for you (or start a round with no choice)
+    autoOn = false; clearTimeout(autoTimer);
+    if (active) settle();
+    tryProceed(true);
+    return;
+  }
   stopAuto();
   step();
 };
+$("mode").onchange = () => { if (!online()) { stopAuto(); start(); } };   // online: the host's next game uses it
 $("duelBtn").onclick = () => {
   if (online()) localPress();
   else if (active && active.waiting) advanceDuel();
