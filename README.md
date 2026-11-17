@@ -27,7 +27,7 @@ If you run low on cards in a duel, you place fewer face down so you still have o
 
 ## Draw 3 mode
 
-Set **Mode → Draw 3** to choose your cards instead of flipping the top one.
+Draw 3 is the default mode: you choose your cards instead of flipping the top one. Set **Mode → Classic** for the original game.
 
 - Each player holds a hand of 3 cards. Click a card to play it.
 - Both players pick at the same time, and the cards are shown together. Nobody sees the other player's card before picking.
@@ -42,7 +42,7 @@ Set **Mode → Draw 3** to choose your cards instead of flipping the top one.
 | **Next round** | Plays the next round. In a duel, it places your face-down cards. |
 | **Auto-play** | Plays rounds by itself. It stops at each duel so you can place the face-down cards. |
 | **Speed** | How fast rounds play. **Instant** with Auto-play runs straight to the end of the game. |
-| **Mode** | Classic or Draw 3. Changing it starts a new game. |
+| **Mode** | Draw 3 (the default) or Classic. Changing it starts a new game. |
 | **Deck passes** | How many trips through the Draw pile before the game ends (see Winning). |
 | **New game** | Shuffles and deals a new game. |
 | **Music** / **Volume** | Turns the music on or off and sets its volume. |
