@@ -1,0 +1,1398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>War</title>
+<style>
+  :root {
+    --bg: #14532d; --panel: #166534; --ink: #f0fdf4; --muted: #bbf7d0;
+    --card: #ffffff; --card-ink: #111827; --red: #b91c1c; --back: #1e3a8a;
+    --accent: #facc15; --accent-ink: #1c1917; --duel: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px; background: var(--bg); color: var(--ink);
+    font: 16px/1.4 system-ui, "Segoe UI", sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; }
+  header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; }
+  h1 { margin: 0; font-size: 1.5rem; }
+  .music, .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .controls { margin-bottom: 12px; }
+  button, select, input {
+    font: inherit; padding: 8px 12px; border-radius: 8px; border: 1px solid transparent;
+  }
+  button { background: var(--accent); color: var(--accent-ink); font-weight: 600; cursor: pointer; }
+  button.secondary { background: transparent; color: var(--ink); border-color: var(--muted); }
+  button:disabled { opacity: .5; cursor: default; }
+  #next { min-width: 13.5em; }
+  #next.duel { background: var(--duel); color: #fff; }
+  label { color: var(--muted); font-size: .9rem; display: flex; align-items: center; gap: 6px; }
+  input[type=number] { width: 70px; }
+  input[type=range] { padding: 0; width: 110px; accent-color: var(--accent); }
+  .player { background: var(--panel); border-radius: 12px; padding: 12px; }
+  .player.winner { outline: 3px solid var(--accent); }
+  .head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+  .name { font-weight: 700; }
+  .info { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .table { display: flex; gap: 14px; align-items: flex-start; }
+  .piles { display: flex; gap: 6px; flex: none; }
+  .pile { width: 70px; text-align: center; font-size: .8rem; color: var(--muted); }
+  .stack {
+    width: 52px; height: 76px; border-radius: 7px; margin: 0 18px 18px 0;
+    display: flex; align-items: center; justify-content: center;
+    background: repeating-linear-gradient(45deg, var(--back) 0 6px, #3b82f6 6px 12px);
+    border: 3px solid var(--card); transition: box-shadow .15s;
+  }
+  .stack span {
+    background: rgba(0,0,0,.65); color: #fff; font-weight: 700; font-size: .95rem;
+    min-width: 30px; padding: 2px 6px; border-radius: 999px; font-variant-numeric: tabular-nums;
+  }
+  .stack.empty { background: none; border: 2px dashed var(--muted); opacity: .6; }
+  .stack.pulse { animation: pulse .22s ease-out; }
+  @keyframes pulse { 40% { transform: scale(1.14); } }
+  .laid { display: flex; flex-wrap: wrap; gap: 6px; min-height: 76px; flex: 1; }
+  .card {
+    width: 52px; height: 76px; border-radius: 7px; background: var(--card); color: var(--card-ink);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 1.15rem; line-height: 1.1; box-shadow: 0 1px 3px rgba(0,0,0,.4);
+    position: relative;
+  }
+  .card.red { color: var(--red); }
+  .card.down {
+    background: repeating-linear-gradient(45deg, var(--back) 0 6px, #3b82f6 6px 12px);
+    border: 3px solid var(--card);
+  }
+  .card.best { outline: 3px solid var(--accent); }
+  .card.deal { animation: deal .14s ease-out; }
+  @keyframes deal { from { transform: translateX(-24px); opacity: 0; } }
+  #status { text-align: center; padding: 12px 4px; font-weight: 600; min-height: 3.2em; }
+  #status.duel { color: var(--accent); font-size: 1.1rem; }
+  #log {
+    margin-top: 12px; max-height: 220px; overflow-y: auto; background: rgba(0,0,0,.25);
+    border-radius: 12px; padding: 8px 12px; font-size: .9rem; color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  #log div { padding: 2px 0; }
+  dialog {
+    width: min(92vw, 440px); padding: 20px; border: 3px solid var(--duel); border-radius: 16px;
+    background: #1c1917; color: #fff; text-align: center; box-shadow: 0 0 40px rgba(220, 38, 38, .6);
+  }
+  dialog::backdrop { background: rgba(0, 0, 0, .65); }
+  dialog h2 { margin: 0 0 4px; font-size: 2.2rem; letter-spacing: .08em; color: var(--accent); }
+  dialog p { margin: 0 0 14px; min-height: 2.8em; }
+  .drow { text-align: left; margin-bottom: 12px; }
+  .drow > span { display: block; font-size: .85rem; color: #d6d3d1; margin-bottom: 4px; }
+  .dcards { display: flex; flex-wrap: wrap; gap: 6px; min-height: 76px; }
+  #duelBtn {                              /* stays in view even when a long duel makes the popup scroll */
+    background: var(--duel); color: #fff; width: 100%; padding: 12px; font-size: 1.05rem;
+    position: sticky; bottom: 0; z-index: 1;
+  }
+  /* Online play */
+  [hidden] { display: none !important; }
+  body.online #auto, body.online .speed { display: none; }
+  #net {
+    margin-bottom: 12px; padding: 8px 12px; border-radius: 8px;
+    background: rgba(0, 0, 0, .25); color: var(--muted); font-size: .9rem;
+  }
+  .ready {
+    margin-left: 8px; padding: 1px 8px; border-radius: 999px; vertical-align: 2px;
+    background: var(--accent); color: var(--accent-ink); font-size: .75rem; font-weight: 700;
+  }
+  #lobby { border-color: var(--accent); box-shadow: 0 0 40px rgba(250, 204, 21, .35); }
+  #lobby h2 { font-size: 1.5rem; letter-spacing: 0; margin-bottom: 8px; }
+  #lobby p { min-height: 0; margin-bottom: 12px; }
+  #lobby .row { display: flex; gap: 8px; margin-bottom: 10px; }
+  #lobby .row > * { flex: 1; min-width: 0; }
+  #codeIn { text-transform: uppercase; text-align: center; letter-spacing: .2em; font-weight: 700; }
+  #roomCode { font-size: 2.2rem; font-weight: 800; letter-spacing: .25em; color: var(--accent); margin: 2px 0 10px; }
+  #lobbyStatus { min-height: 1.4em; color: #fde68a; }
+  /* Deciding duel card: two-sided, so it can arrive face down and turn over */
+  .flip { width: 52px; height: 76px; position: relative; z-index: 2; }
+  .flip .wrap { width: 100%; height: 100%; perspective: 500px; }
+  .flip .inner { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; }
+  .flip .inner > .card { position: absolute; inset: 0; width: 100%; height: 100%; backface-visibility: hidden; }
+  .flip .inner > .card.down { transform: rotateY(180deg); }
+  .win .card:not(.down), .card.win { outline: 3px solid var(--accent); box-shadow: 0 0 22px 6px var(--accent); }
+  .lose { opacity: .45; filter: grayscale(1); }
+  #sparks { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 3; }
+  /* Layer for the deck being shuffled and dealt at the start of a game */
+  #mid { position: relative; }
+  #dealer { position: absolute; left: 50%; top: 50%; z-index: 20; pointer-events: none; }
+  #dealer .card { box-shadow: 0 2px 6px rgba(0, 0, 0, .5); }
+  .spark { position: absolute; width: 9px; height: 9px; margin: -4px 0 0 -4px; border-radius: 50%; opacity: 0; }
+  @media (max-height: 560px) {           /* short windows: a compact popup that still fits */
+    .dcards .flip { width: 36px; height: 52px; }
+    dialog { padding: 10px; }
+    dialog h2 { font-size: 1.25rem; }
+    dialog p { margin-bottom: 6px; min-height: 0; font-size: .85rem; }
+    .drow { margin-bottom: 6px; }
+    .drow > span { font-size: .75rem; margin-bottom: 2px; }
+    .dcards { gap: 4px; min-height: 52px; }
+    .dcards .card { width: 36px; height: 52px; font-size: .9rem; }
+    #duelBtn { padding: 6px; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    dialog[open] { animation: pop .28s cubic-bezier(.2, 1.5, .4, 1); }
+    dialog h2.shake { animation: shake .5s; }
+    dialog h2.slam { animation: titleSlam .4s cubic-bezier(.2, 1.6, .4, 1); }
+    /* The deciding card's timeline (1.48s, matches REVEAL): rise, tremble, turn over, slam down */
+    .flip { animation: rise .25s ease-out both, slam .18s ease-in 1.3s forwards; }
+    .flip .wrap { animation: tremble .1s linear .25s 8 alternate; }
+    .flip .inner { animation: turn .3s ease-in-out 1s both; }
+    .flip.win { animation: winPop .5s ease-out forwards; }
+    .flip.lose { animation: loseDrop .5s ease-in forwards; }
+    dialog.impact { animation: quake .45s linear; }
+    dialog.impact::backdrop { animation: flashBg .5s ease-out; }
+    .spark { animation: spark .8s ease-out forwards; }
+  }
+  @keyframes rise { from { transform: scale(.4); opacity: 0; } to { transform: scale(1.5); opacity: 1; } }
+  @keyframes tremble { from { transform: rotate(-5deg); } to { transform: rotate(5deg); } }
+  @keyframes turn { from { transform: rotateY(180deg); } to { transform: rotateY(0); } }
+  @keyframes slam { from { transform: scale(1.5); } 70% { transform: scale(.9); } to { transform: scale(1); } }
+  @keyframes winPop { 40% { transform: scale(1.5); } to { transform: scale(1.2); } }
+  @keyframes loseDrop { to { transform: translateY(8px) rotate(8deg) scale(.9); } }
+  @keyframes quake {
+    0% { transform: scale(1.05); box-shadow: 0 0 140px 50px #fff; }
+    15% { transform: translate(-10px, 6px) rotate(-1.5deg); } 30% { transform: translate(9px, -7px) rotate(1.5deg); }
+    45% { transform: translate(-7px, -4px); } 60% { transform: translate(6px, 5px); } 75% { transform: translate(-3px, 2px); }
+  }
+  @keyframes flashBg { from { background: rgba(255, 255, 255, .9); } }
+  @keyframes titleSlam { from { transform: scale(3); opacity: 0; } }
+  @keyframes spark {
+    from { opacity: 1; }
+    to { transform: translate(var(--dx), var(--dy)) scale(.2); opacity: 0; }
+  }
+  @keyframes pop { from { transform: scale(.5); opacity: 0; } }
+  @keyframes shake {
+    20% { transform: translateX(-8px) rotate(-3deg); } 40% { transform: translateX(8px) rotate(3deg); }
+    60% { transform: translateX(-5px); } 80% { transform: translateX(5px); }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>War</h1>
+    <div class="music">
+      <button id="online" class="secondary">Play online</button>
+      <button id="music" class="secondary">Music: On</button>
+      <label>Volume <input id="vol" type="range" min="0" max="100" value="25"></label>
+    </div>
+  </header>
+  <div id="net" role="status" hidden></div>
+  <div class="controls">
+    <button id="next">Next round</button>
+    <button id="auto" class="secondary">Auto-play</button>
+    <label class="speed">Speed
+      <select id="speed">
+        <option value="slow">Slow</option>
+        <option value="normal" selected>Normal</option>
+        <option value="fast">Fast</option>
+        <option value="instant">Instant</option>
+      </select>
+    </label>
+    <label>Deck passes <input id="cap" type="number" min="1" value="3"></label>
+    <button id="new" class="secondary">New game</button>
+  </div>
+
+  <section class="player" id="p0">
+    <div class="head"><span class="name"><span class="who">Player 1</span><span class="ready" hidden>Ready</span></span><span class="info"></span></div>
+    <div class="table">
+      <div class="piles">
+        <div class="pile"><div class="stack" data-kind="draw"></div>Draw</div>
+        <div class="pile"><div class="stack" data-kind="won"></div>Won</div>
+      </div>
+      <div class="laid"></div>
+    </div>
+  </section>
+  <div id="mid">
+    <div id="status"></div>
+    <div id="dealer"></div>
+  </div>
+  <section class="player" id="p1">
+    <div class="head"><span class="name"><span class="who">Player 2</span><span class="ready" hidden>Ready</span></span><span class="info"></span></div>
+    <div class="table">
+      <div class="piles">
+        <div class="pile"><div class="stack" data-kind="draw"></div>Draw</div>
+        <div class="pile"><div class="stack" data-kind="won"></div>Won</div>
+      </div>
+      <div class="laid"></div>
+    </div>
+  </section>
+
+  <div id="log"></div>
+</main>
+
+<dialog id="duel" aria-labelledby="duelTitle">
+  <h2 id="duelTitle">DUEL!</h2>
+  <p id="duelText"></p>
+  <div class="drow"><span id="dn0">Player 1</span><div class="dcards" id="d0"></div></div>
+  <div class="drow"><span id="dn1">Player 2</span><div class="dcards" id="d1"></div></div>
+  <button id="duelBtn">Place duel card 1 of 3</button>
+  <div id="sparks"></div>
+</dialog>
+
+<dialog id="lobby" aria-labelledby="lobbyTitle">
+  <h2 id="lobbyTitle">Play online</h2>
+  <p>Play a friend over the internet. One of you hosts and shares the room code, and the other joins with it.</p>
+  <div id="lobbyChoose">
+    <div class="row"><button id="hostBtn">Host a game</button></div>
+    <div class="row">
+      <input id="codeIn" maxlength="5" placeholder="Room code" autocomplete="off" spellcheck="false" aria-label="Room code">
+      <button id="joinBtn">Join</button>
+    </div>
+  </div>
+  <div id="lobbyHost" hidden>
+    <div>Your room code</div>
+    <div id="roomCode"></div>
+    <div class="row"><button id="copyBtn" class="secondary">Copy room code</button></div>
+  </div>
+  <p id="lobbyStatus" role="status"></p>
+  <div class="row"><button id="lobbyClose" class="secondary">Cancel</button></div>
+</dialog>
+
+<script>
+// ---------- Game logic (no DOM) ----------
+const SUITS = ["♠", "♥", "♦", "♣"];
+const FACE_DOWN_PER_DUEL = 3;
+
+function rankLabel(rank) {
+  return { 11: "J", 12: "Q", 13: "K", 14: "A" }[rank] || String(rank);
+}
+
+function shuffledDeck() {
+  const deck = [];
+  for (const suit of SUITS)
+    for (let rank = 2; rank <= 14; rank++) deck.push({ rank, suit }); // ace = 14 (high)
+  for (let i = deck.length - 1; i > 0; i--) {                         // Fisher-Yates shuffle
+    const j = Math.floor(Math.random() * (i + 1));
+    [deck[i], deck[j]] = [deck[j], deck[i]];
+  }
+  return deck;
+}
+
+// `deck` is the 52 cards in dealing order. Online games pass in the host's deck so both screens match.
+function newGame(cap, deck = shuffledDeck()) {
+  return {
+    players: [
+      { draw: deck.slice(0, 26), won: [], refills: 0 },
+      { draw: deck.slice(26), won: [], refills: 0 },
+    ],
+    round: 0, cap, over: false, winner: null, reason: null,
+  };
+}
+
+const count = (p) => p.draw.length + p.won.length;
+
+// Take the top card. When the draw pile is empty, the won pile becomes the
+// new draw pile in the order the cards were won (no shuffle).
+function drawCard(p) {
+  if (p.draw.length === 0 && p.won.length > 0) { p.draw = p.won; p.won = []; p.refills++; }
+  return p.draw.shift() || null;
+}
+
+// A pass is one trip through a draw pile. The pass a player is on is
+// refills + 1; it is finished once that draw pile is empty.
+const passesDone = (p) => p.refills + (p.draw.length === 0 ? 1 : 0);
+
+// Plays one whole round, duels included. Every card put on the table is recorded
+// with the duel it belongs to (0 = the opening flip) so the screen can replay it in steps.
+function playRound(g) {
+  if (g.over) return null;
+  const laid = [[], []];                       // cards each player put on the table
+  const up = [null, null];                     // each player's current face-up card
+  for (const i of [0, 1]) {
+    up[i] = drawCard(g.players[i]);
+    laid[i].push({ card: up[i], up: true, duel: 0 });
+  }
+
+  let duels = 0, winner = null;
+  const lastCardStands = [false, false];
+  while (true) {
+    if (up[0].rank !== up[1].rank) { winner = up[0].rank > up[1].rank ? 0 : 1; break; }
+    if (count(g.players[0]) === 0 && count(g.players[1]) === 0) break; // nobody can continue
+    duels++;
+    for (const i of [0, 1]) {
+      const p = g.players[i];
+      const n = count(p);
+      if (n === 0) { lastCardStands[i] = true; continue; }  // out of cards: last card stays face up
+      const down = Math.min(FACE_DOWN_PER_DUEL, n - 1);     // always keep one card to flip
+      for (let k = 0; k < down; k++) laid[i].push({ card: drawCard(p), up: false, duel: duels });
+      up[i] = drawCard(p);
+      laid[i].push({ card: up[i], up: true, duel: duels });
+    }
+  }
+
+  g.round++;
+  const potSize = laid[0].length + laid[1].length;
+  if (winner !== null) {
+    // Winner's cards first, then the loser's, onto the bottom of the won pile.
+    const pot = [...laid[winner], ...laid[1 - winner]].map((x) => x.card);
+    g.players[winner].won.push(...pot);
+  } else {
+    for (const i of [0, 1]) g.players[i].won.push(...laid[i].map((x) => x.card));
+  }
+
+  const c = [count(g.players[0]), count(g.players[1])];
+  if (winner === null) {
+    g.over = true; g.reason = "stalemate";
+  } else if (c[1 - winner] === 0) {
+    g.over = true; g.winner = winner; g.reason = "cards";
+  } else if (g.players.some((p) => passesDone(p) >= g.cap)) {
+    g.over = true; g.reason = "cap";
+    g.winner = c[0] === c[1] ? null : (c[0] > c[1] ? 0 : 1);
+  }
+  return { round: g.round, laid, up, winner, duels, potSize, lastCardStands };
+}
+
+// ---------- Music (generated by the browser, no audio files) ----------
+const music = (() => {
+  const STEP = 60 / 104 / 4;            // length of a 16th note at 104 beats per minute
+  const GAIN = 2;                       // overall loudness when the volume slider is at 100%
+  // An 8-bar march in A minor. Notes are MIDI numbers; 16 steps to a bar.
+  const MELODY = {                      // step: [note, length in steps]
+    0: [69, 6], 6: [72, 2], 8: [76, 8],
+    16: [77, 4], 20: [76, 4], 24: [72, 8],
+    32: [67, 6], 38: [72, 2], 40: [76, 4], 44: [74, 4],
+    48: [74, 8], 56: [71, 4], 60: [67, 4],
+    64: [69, 6], 70: [72, 2], 72: [76, 4], 76: [81, 4],
+    80: [81, 4], 84: [79, 2], 86: [77, 2], 88: [76, 8],
+    96: [74, 4], 100: [77, 4], 104: [76, 4], 108: [74, 4],
+    112: [76, 10], 124: [68, 2], 126: [71, 2],
+  };
+  const ROOT  = [45, 41, 48, 43, 45, 41, 50, 40];          // bass note on beats 1 and 3 of each bar
+  const FIFTH = [52, 48, 43, 50, 52, 48, 45, 47];          // bass note on beats 2 and 4
+  const CHORD = [[57, 60, 64], [57, 60, 65], [55, 60, 64], [55, 59, 62],
+                 [57, 60, 64], [57, 60, 65], [57, 62, 65], [56, 59, 64]];
+  const SNARE = [0, 4, 6, 7, 8, 12, 14];                   // snare hits within a bar
+
+  // Duel section: a 4-bar chiptune metalcore loop at 160 beats per minute.
+  // Bars 1-2 are fast (double kick on every 16th, snare on beats 2 and 4);
+  // bars 3-4 are a half-time breakdown (kick follows the riff, snare on beat 3).
+  const DUEL_STEP = 60 / 160 / 4;
+  const _ = null;
+  const RIFF = [                        // palm-muted chord per 16th, in semitones above low D; _ = silence
+    0, 0, _, 0,  0, _, 0, 0,  3, _, 0, 0,  1, _, 0, _,
+    0, 0, _, 0,  0, _, 0, 0,  6, _, 5, _,  3, _, 1, _,
+    0, _, _, 0,  0, _, _, _,  0, _, 0, _,  _, 0, 0, _,
+    0, _, _, 0,  0, _, _, _,  0, 0, _, 0,  1, 1, _, _,
+  ];
+  const SOLO = {                        // lead line over the fast bars: step: [note, length in steps]
+    0: [74, 2], 2: [77, 2], 4: [81, 4], 8: [79, 2], 10: [77, 2], 12: [76, 4],
+    16: [77, 2], 18: [81, 2], 20: [86, 4], 24: [84, 2], 26: [82, 2], 28: [81, 4],
+  };
+  const CRUNCH = new Float32Array(1024);                   // distortion curve for the riff
+  for (let i = 0; i < CRUNCH.length; i++) CRUNCH[i] = Math.tanh(6 * (i / 511.5 - 1));
+
+  let ctx = null, master, bus, noise;
+  let timer = null, pos = 0, nextTime = 0;
+  let on = true, volume = 0.25, mode = "march";
+  try {
+    on = localStorage.getItem("war-music") !== "off";
+    const v = parseFloat(localStorage.getItem("war-volume"));
+    if (v >= 0 && v <= 1) volume = v;
+  } catch (e) { /* storage unavailable: keep defaults */ }
+  const save = (key, value) => { try { localStorage.setItem(key, value); } catch (e) {} };
+
+  function filter(type, freq) {
+    const f = ctx.createBiquadFilter();
+    f.type = type; f.frequency.value = freq;
+    return f;
+  }
+
+  function build() {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const limiter = ctx.createDynamicsCompressor();          // keeps loud moments from distorting
+    limiter.threshold.value = -6; limiter.knee.value = 6; limiter.ratio.value = 12;
+    limiter.connect(ctx.destination);
+    master = ctx.createGain(); master.gain.value = volume * GAIN; master.connect(limiter);
+    noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+    const data = noise.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    bus = makeBus();
+  }
+
+  // Each section of music plays through its own bus, so the old section can be
+  // cut off cleanly the moment the music switches.
+  function makeBus() {
+    const out = ctx.createGain();
+    out.gain.value = SECTIONS[mode].level;
+    out.connect(master);
+    const lead = filter("lowpass", 1500); lead.connect(out);
+    const bass = filter("lowpass", 700); bass.connect(out);
+    const crunch = ctx.createWaveShaper(), tame = filter("lowpass", 2200), level = ctx.createGain();
+    crunch.curve = CRUNCH; level.gain.value = 0.22;
+    crunch.connect(tame); tame.connect(level); level.connect(out);
+    return { out, lead, bass, crunch };
+  }
+
+  function setMode(next) {
+    if (next === mode) return;
+    mode = next; pos = 0;
+    if (!ctx) return;
+    const old = bus.out;
+    old.gain.setTargetAtTime(0, ctx.currentTime, 0.03);
+    setTimeout(() => old.disconnect(), 500);
+    bus = makeBus();
+    nextTime = ctx.currentTime + 0.06;                     // start the new section straight away
+  }
+
+  function tone(type, midi, t, dur, peak, out, attack = 0.02) {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type;
+    o.frequency.value = 440 * 2 ** ((midi - 69) / 12);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + attack);
+    g.gain.exponentialRampToValueAtTime(peak * 0.5, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(out);
+    o.start(t); o.stop(t + dur + 0.05);
+  }
+
+  // A burst of filtered noise: snares and cymbals.
+  function hit(t, peak, decay, highpass, out = bus.out) {
+    const s = ctx.createBufferSource(), f = filter("highpass", highpass), g = ctx.createGain();
+    s.buffer = noise;
+    g.gain.setValueAtTime(peak, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + decay);
+    s.connect(f); f.connect(g); g.connect(out);
+    s.start(t); s.stop(t + decay + 0.02);
+  }
+
+  // A tone that drops quickly in pitch: the bass drum.
+  function kick(t, peak) {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = "triangle";
+    o.frequency.setValueAtTime(220, t);
+    o.frequency.exponentialRampToValueAtTime(50, t + 0.07);
+    g.gain.setValueAtTime(peak, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+    o.connect(g); g.connect(bus.out);
+    o.start(t); o.stop(t + 0.12);
+    hit(t, peak * 0.15, 0.02, 3000);                       // click so it cuts through small speakers
+  }
+
+  function marchStep(s, t) {
+    const bar = s >> 4, beat = s & 15;
+    const note = MELODY[s];
+    if (note) tone("square", note[0], t, note[1] * STEP, 0.12, bus.lead);
+    if (beat % 4 === 0) tone("square", beat % 8 === 0 ? ROOT[bar] : FIFTH[bar], t, STEP * 3.6, 0.16, bus.bass);
+    if (beat === 0) for (const n of CHORD[bar]) tone("sine", n, t, STEP * 16, 0.05, bus.out);
+    if (SNARE.includes(beat)) hit(t, beat % 4 === 0 ? 0.1 : 0.05, 0.09, 1800);
+  }
+
+  function duelStep(s, t) {
+    const bar = s >> 4, beat = s & 15, fast = bar < 2;
+    const chug = RIFF[s];
+    if (chug !== null)                                     // low D power chord: root, fifth, octave
+      for (const n of [38, 45, 50]) tone("sawtooth", n + chug, t, DUEL_STEP * 0.9, 0.12, bus.crunch, 0.004);
+    if (fast || chug !== null) kick(t, 0.5);
+    if (fast ? beat === 4 || beat === 12 : beat === 8) {   // snare: noise plus a short thump
+      hit(t, 0.3, 0.16, 900);
+      tone("triangle", 55, t, 0.08, 0.2, bus.out, 0.003);
+    }
+    if (beat === 0 && bar % 2 === 0) hit(t, 0.16, 0.5, 5000);          // crash opens each half
+    else if (!fast && beat % 4 === 0) hit(t, 0.1, 0.22, 4000);         // china on every beat of the breakdown
+    else if (fast && beat % 2 === 0) hit(t, 0.035, 0.04, 7000);        // hi-hat
+    const note = SOLO[s];
+    if (note) tone("square", note[0], t, note[1] * DUEL_STEP, 0.1, bus.lead);
+  }
+
+  // Victory section, played once a player has won: an 8-bar power-metal fanfare in C major at
+  // 150 beats per minute. Distorted power chords gallop under a harmonised lead, so it is both
+  // heavier than the march and unmistakably different from it (major key, faster, guitars).
+  const WIN_STEP = 60 / 150 / 4;
+  const FANFARE = {                     // step: [note, length in steps]
+    0: [72, 2], 2: [72, 1], 3: [72, 1], 4: [76, 4], 8: [79, 4], 12: [76, 2], 14: [79, 2],
+    16: [81, 6], 22: [79, 2], 24: [77, 4], 28: [81, 4],
+    32: [79, 2], 34: [79, 1], 35: [79, 1], 36: [83, 4], 40: [86, 4], 44: [83, 2], 46: [86, 2],
+    48: [84, 8], 56: [79, 4], 60: [76, 4],
+    64: [76, 2], 66: [81, 2], 68: [84, 4], 72: [83, 2], 74: [81, 2], 76: [76, 4],
+    80: [77, 2], 82: [81, 2], 84: [84, 4], 88: [81, 2], 90: [79, 2], 92: [77, 4],
+    96: [79, 4], 100: [81, 4], 104: [83, 4], 108: [86, 4],
+    112: [84, 12], 124: [79, 2], 126: [79, 2],
+  };
+  const WIN_ROOT = [48, 41, 43, 48, 45, 41, 43, 48];       // chord of each bar: C F G C Am F G C
+  const MAJOR = [0, 2, 4, 5, 7, 9, 11];
+
+  function thirdBelow(midi) {                              // harmony note two scale steps under the melody
+    const note = midi - (midi % 12) + MAJOR[(MAJOR.indexOf(midi % 12) + 5) % 7];
+    return note > midi ? note - 12 : note;
+  }
+
+  function powerChord(root, t, dur) {                      // root, fifth and octave through the distortion
+    for (const n of [root, root + 7, root + 12]) tone("sawtooth", n, t, dur, 0.11, bus.crunch, 0.004);
+  }
+
+  function victoryStep(s, t) {
+    const bar = s >> 4, beat = s & 15, sub = beat & 3, root = WIN_ROOT[bar];
+    const note = FANFARE[s];
+    if (note) {                                            // twin lead: the melody and a third below it
+      tone("square", note[0], t, note[1] * WIN_STEP, 0.12, bus.lead);
+      tone("sawtooth", thirdBelow(note[0]), t, note[1] * WIN_STEP, 0.07, bus.lead);
+    }
+    if (bar === 7) {                                       // last bar: one big held chord, then a drum fill
+      if (beat === 0) {
+        powerChord(root, t, WIN_STEP * 11);
+        tone("square", root - 12, t, WIN_STEP * 11, 0.14, bus.bass);
+        kick(t, 0.5);
+        hit(t, 0.16, 0.7, 5000);
+      }
+      if (beat >= 8) {
+        hit(t, 0.1 + (beat - 8) * 0.03, 0.1, 900);
+        if (beat % 2 === 0) kick(t, 0.4);
+      }
+      return;
+    }
+    if (sub !== 1) {                                       // gallop: long-short-short on every beat
+      powerChord(root, t, WIN_STEP * (sub === 0 ? 1.9 : 0.9));
+      kick(t, 0.45);
+    }
+    if (sub === 0) tone("square", root - 12, t, WIN_STEP * 3.6, 0.14, bus.bass);
+    if (beat === 4 || beat === 12) {                       // snare on beats 2 and 4
+      hit(t, 0.3, 0.16, 900);
+      tone("triangle", 55, t, 0.08, 0.2, bus.out, 0.003);
+    }
+    if (beat === 0 && bar % 4 === 0) hit(t, 0.16, 0.6, 5000);          // crash every four bars
+    else if (sub === 0) hit(t, 0.05, 0.1, 6000);                       // ride on each beat
+  }
+
+  // Suspense before the deciding duel card: nothing but a snare roll that keeps swelling.
+  function rollStep(s, t) {
+    hit(t, Math.min(0.06 + s * 0.008, 0.3), 0.05, 1200);
+    if (s % 8 === 0) kick(t, 0.35);
+  }
+
+  // The deciding card lands: a deep boom and a long crash.
+  function impact() {
+    if (!ctx || !timer) return;
+    const t = ctx.currentTime + 0.02;
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = "triangle";
+    o.frequency.setValueAtTime(130, t);
+    o.frequency.exponentialRampToValueAtTime(32, t + 0.5);
+    g.gain.setValueAtTime(0.9, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.7);
+    o.connect(g); g.connect(bus.out);
+    o.start(t); o.stop(t + 0.75);
+    hit(t, 0.35, 0.9, 2500);
+  }
+
+  // Card sounds (shuffling, dealing): `count` soft ticks, `gap` seconds apart, starting in `delay` seconds.
+  // They play through their own output so they can be cut short with hush().
+  let sfx = null;
+  function ticks(delay, count, gap, peak) {
+    if (!ctx || !timer) return;
+    if (!sfx) { sfx = ctx.createGain(); sfx.connect(master); }
+    for (let k = 0; k < count; k++) hit(ctx.currentTime + delay + k * gap, peak, 0.025, 3500, sfx);
+  }
+  function hush() {
+    if (sfx) sfx.disconnect();
+    sfx = null;
+  }
+
+  // Each section: how long one step lasts, how many steps before it loops, its loudness, and what a step plays.
+  const SECTIONS = {
+    march:   { step: STEP,          steps: 128,      level: 1,   play: marchStep },
+    duel:    { step: DUEL_STEP,     steps: 64,       level: 0.6, play: duelStep },
+    roll:    { step: DUEL_STEP / 2, steps: Infinity, level: 0.6, play: rollStep },
+    victory: { step: WIN_STEP,      steps: 128,      level: 0.6, play: victoryStep },
+  };
+
+  // Queue the notes for the next fraction of a second; called many times a second.
+  function tick() {
+    if (nextTime < ctx.currentTime) nextTime = ctx.currentTime + 0.05;
+    while (nextTime < ctx.currentTime + 0.2) {
+      const section = SECTIONS[mode];
+      section.play(pos, nextTime);
+      nextTime += section.step;
+      pos = (pos + 1) % section.steps;
+    }
+  }
+
+  function start() {
+    if (!ctx) build();
+    ctx.resume();
+    if (!timer) { timer = setInterval(tick, 50); tick(); }
+  }
+
+  function stop() {
+    clearInterval(timer); timer = null;
+    if (ctx) ctx.suspend();
+  }
+
+  // Browsers only allow sound after the first click or key press on the page.
+  const unlock = () => { if (on) start(); };
+  addEventListener("pointerdown", unlock, { once: true });
+  addEventListener("keydown", unlock, { once: true });
+  document.addEventListener("visibilitychange", () => {
+    if (!ctx || !timer) return;
+    if (document.hidden) ctx.suspend(); else ctx.resume();
+  });
+
+  return {
+    get on() { return on; },
+    get volume() { return volume; },
+    setOn(value) { on = value; save("war-music", on ? "on" : "off"); if (on) start(); else stop(); },
+    setVolume(value) {
+      volume = value; save("war-volume", String(value));
+      if (ctx) master.gain.setTargetAtTime(value * GAIN, ctx.currentTime, 0.02);
+    },
+    get mode() { return mode; },
+    section(name) { setMode(name); },                      // "march", "duel", "roll" or "victory"
+    impact, ticks, hush,
+  };
+})();
+
+// ---------- UI ----------
+const $ = (id) => document.getElementById(id);
+const NAMES = ["Player 1", "Player 2"];
+const TIMINGS = {                       // hold: cards stay on the table; fly: travel time to the pile
+  slow:    { hold: 900, fly: 600 },
+  normal:  { hold: 450, fly: 400 },
+  fast:    { hold: 90,  fly: 160 },
+  instant: { hold: 90,  fly: 160 },     // used only for single manual rounds
+};
+const SUSPENSE = 400;                   // pause before the deciding duel cards appear
+const REVEAL = 1480;                    // length of the deciding cards' flip animation (matches the CSS)
+const DUEL_RESULT = 2200;               // how long the duel popup shows the winner before closing
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+let game;
+let shown;            // pile sizes drawn on screen; lags the game while a round is being shown
+let active = null;    // round being shown: { r, duel, placed, downs, waiting, flipping, resolved }
+let timers = [];      // timeouts belonging to the round being shown
+let autoOn = false, autoTimer = null;
+let dealing = false;  // the shuffle-and-deal animation at the start of a game is running
+let net = null;       // online session, see "Online play" below; null when playing solo
+const online = () => !!(net && net.live);
+
+// Music that should be playing outside a duel: the fanfare once a player has won, otherwise the march.
+const baseSection = () =>
+  game && game.over && game.winner !== null && (!active || active.resolved) ? "victory" : "march";
+
+const capValue = () => Math.max(1, parseInt($("cap").value, 10) || 1);
+const timings = () => TIMINGS[online() ? "normal" : $("speed").value];
+const realCounts = () => game.players.map((p) => ({ draw: p.draw.length, won: p.won.length, refills: p.refills }));
+const stackEl = (i, kind) => $("p" + i).querySelector(`.stack[data-kind=${kind}]`);
+const laidEl = (i) => $("p" + i).querySelector(".laid");
+const later = (fn, ms) => timers.push(setTimeout(fn, ms));
+const part = (r, i, duel, up) => r.laid[i].filter((e) => e.duel === duel && e.up === up);
+
+function rankName(rank) {
+  return { 8: "an 8", 11: "a jack", 12: "a queen", 13: "a king", 14: "an ace" }[rank] || "a " + rank;
+}
+
+// Restart a CSS animation that is tied to a class.
+function replay(el, cls) {
+  el.classList.remove(cls);
+  void el.offsetWidth;
+  el.classList.add(cls);
+}
+const pulse = (el) => replay(el, "pulse");
+
+const DUEL_TITLES = ["DUEL!", "DOUBLE DUEL!", "TRIPLE DUEL!!", "QUADRUPLE DUEL!!!"];
+const duelTitle = (d) => DUEL_TITLES[d - 1] || `${d}× DUEL!!!`;
+
+function setTitle(text, animation) {
+  const title = $("duelTitle");
+  title.textContent = text;
+  title.className = "";
+  void title.offsetWidth;
+  title.className = animation;
+}
+
+// Draw both piles of both players from `shown`. A pile looks thicker the more cards it holds.
+function drawPiles() {
+  for (const i of [0, 1]) {
+    for (const kind of ["draw", "won"]) {
+      const el = stackEl(i, kind), n = shown[i][kind];
+      el.classList.toggle("empty", n === 0);
+      el.innerHTML = `<span>${n}</span>`;
+      const layers = [];
+      for (let k = 1; k <= Math.floor(n / 3); k++)
+        layers.push(`${k}px ${k}px 0 ${k % 2 ? "#1e3a8a" : "#dbeafe"}`);
+      el.style.boxShadow = layers.join(",") || "none";
+    }
+    $("p" + i).querySelector(".info").textContent =
+      `Pass ${Math.min(shown[i].refills + 1, game.cap)} of ${game.cap} · ${shown[i].draw + shown[i].won} cards`;
+  }
+}
+
+function cardEl(entry, deal = true) {
+  const el = document.createElement("div");
+  const slide = deal ? " deal" : "";
+  if (!entry.up) { el.className = "card down" + slide; return el; }
+  const red = entry.card.suit === "♥" || entry.card.suit === "♦";
+  el.className = "card" + slide + (red ? " red" : "");
+  el.innerHTML = `<span>${rankLabel(entry.card.rank)}</span><span>${entry.card.suit}</span>`;
+  return el;
+}
+
+// A two-sided card for the duel popup: it arrives face down and turns over (see the .flip styles).
+function flipEl(entry) {
+  const flip = document.createElement("div"), wrap = document.createElement("div"), inner = document.createElement("div");
+  flip.className = "flip"; wrap.className = "wrap"; inner.className = "inner";
+  inner.append(cardEl({ up: false }, false), cardEl(entry, false));
+  wrap.append(inner);
+  flip.append(wrap);
+  return flip;
+}
+
+// Sparks flying out of the winning card.
+function burst(el) {
+  const dlg = $("duel"), box = dlg.getBoundingClientRect(), c = el.getBoundingClientRect();
+  const x = c.left + c.width / 2 - box.left - dlg.clientLeft;
+  const y = c.top + c.height / 2 - box.top - dlg.clientTop + dlg.scrollTop;
+  const colors = ["#facc15", "#ffffff", "#f87171"];
+  for (let k = 0; k < 18; k++) {
+    const spark = document.createElement("div");
+    const angle = (k / 18) * 2 * Math.PI + Math.random() * 0.3, reach = 60 + Math.random() * 80;
+    spark.className = "spark";
+    spark.style.cssText = `left:${x}px; top:${y}px; background:${colors[k % 3]}; ` +
+      `--dx:${Math.cos(angle) * reach}px; --dy:${Math.sin(angle) * reach}px`;
+    $("sparks").append(spark);
+  }
+}
+
+// Move one card from a player's piles on screen to the table (mirrors drawCard).
+function place(i, entry, inPopup = true) {
+  const s = shown[i];
+  if (s.draw === 0) { s.draw = s.won; s.won = 0; s.refills++; pulse(stackEl(i, "draw")); }
+  s.draw--;
+  laidEl(i).append(cardEl(entry));
+  if (inPopup && $("duel").open) {                         // the duel popup shows the same cards
+    $("d" + i).append(cardEl(entry));
+    $("duel").scrollTop = $("duel").scrollHeight;          // keep the newest cards in view
+  }
+}
+
+// --- Duel popup: covers the table while a duel is played, and switches the music ---
+
+function openDuel(r, d, tied, downs) {
+  const dlg = $("duel");
+  if (!dlg.open) {
+    for (const i of [0, 1])
+      $("d" + i).replaceChildren(...r.laid[i].filter((e) => e.duel < d).map((e) => cardEl(e)));
+    dlg.showModal();
+  }
+  setTitle(duelTitle(d), "shake");
+  $("duelText").textContent = `Both players flipped ${rankName(tied)}. ` +
+    (downs ? `Place ${downs} card${downs > 1 ? "s" : ""} face down, then the next card decides.`
+           : "The next card decides.");
+  music.section("duel");
+}
+
+function closeDuel() {
+  if ($("duel").open) $("duel").close();
+  $("duel").classList.remove("impact");
+  $("sparks").replaceChildren();
+  music.section(baseSection());
+}
+
+function setStatus(text, duel = false) {
+  $("status").textContent = text;
+  $("status").classList.toggle("duel", duel);
+}
+
+function resultText(r) {
+  let text = r.winner === null
+    ? `Round ${r.round}: tie with no cards left to duel.`
+    : `Round ${r.round}: ${NAMES[r.winner]} takes ${r.potSize} cards` +
+      (r.duels ? ` after ${r.duels} duel${r.duels > 1 ? "s" : ""}.` : ".");
+  r.lastCardStands.forEach((s, i) => {
+    if (s) text += ` ${NAMES[i]} ran out, so their last card stood.`;
+  });
+  if (game.over) {
+    const who = game.winner === null ? "It's a draw" : `${NAMES[game.winner]} wins`;
+    const why = { cards: "the other player is out of cards",
+                  cap: `a player finished deck pass ${game.cap}, so the most cards wins`,
+                  stalemate: "both players ran out during a duel" }[game.reason];
+    text += ` Game over: ${who} (${why}).`;
+  }
+  return text;
+}
+
+function updateControls() {
+  const a = active, on = online();
+  const over = game.over && (!a || a.resolved);    // don't give the ending away mid-duel
+  const open = on && pointOpen();                  // online: the game is waiting for both players to press
+  const waitingForThem = open && net.pressed;
+  const label = dealing ? "Skip shuffle"
+              : waitingForThem ? "Waiting for opponent…"
+              : a && a.waiting ? `Place duel card ${a.placed + 1} of ${a.downs}`
+              : a && a.flipping ? "Flipping…"
+              : !on ? "Next round"
+              : over ? "Game over"
+              : net.started ? "Flip your card" : "Waiting for the host…";
+  $("next").disabled = over || waitingForThem || (on && !net.started);
+  $("next").textContent = label;
+  $("next").classList.toggle("duel", !!a && !a.resolved);
+  $("duelBtn").textContent = label;
+  $("duelBtn").disabled = !(a && a.waiting) || waitingForThem;
+  $("duelBtn").hidden = !a || a.resolved;
+  $("auto").disabled = over || dealing;
+  $("auto").textContent = autoOn ? "Pause" : "Auto-play";
+  $("new").disabled = on && !over;                 // online: no restarting in the middle of a game
+  $("cap").disabled = on && (net.me === 1 || !over);   // online: the host sets it, between games
+  for (const i of [0, 1]) {
+    const seat = `Player ${i + 1}` + (on ? (i === net.me ? " (you)" : " (opponent)") : "");
+    const ready = open && (i === net.me ? net.pressed : net.remotePoint >= net.point);
+    $("p" + i).classList.toggle("winner", over && game.winner === i);
+    $("p" + i).querySelector(".who").textContent = seat;
+    $("p" + i).querySelector(".ready").hidden = !ready;
+    $("dn" + i).textContent = seat + (ready ? " · ready" : "");
+  }
+}
+
+// --- Showing a round: opening flip, then each duel one button press at a time, then the pot flies ---
+
+function step() {
+  if (active) settle();                  // skip the rest of a round still being shown
+  if (game.over) return;
+  if (!online()) game.cap = capValue();  // online, the cap is fixed when the host deals
+  const r = playRound(game);
+  active = { r, duel: 0, placed: 0, downs: 0, waiting: false, flipping: false, resolved: false };
+  for (const i of [0, 1]) {
+    laidEl(i).replaceChildren();
+    place(i, r.laid[i][0]);
+  }
+  drawPiles();
+  if (r.duels > 0) beginDuel(1); else resolve();
+}
+
+function beginDuel(d) {
+  const a = active, r = a.r;
+  a.duel = d; a.placed = 0;
+  a.downs = Math.max(part(r, 0, d, false).length, part(r, 1, d, false).length);
+  const tied = r.laid[0].filter((e) => e.up && e.duel < d).pop().card.rank;
+  a.waiting = a.downs > 0;
+  a.flipping = !a.waiting;               // nobody has a card to place face down: go straight to the flip
+  openDuel(r, d, tied, a.downs);
+  setStatus(`Round ${r.round}: ${duelTitle(d)} Both players flipped ${rankName(tied)}.`, true);
+  if (a.flipping) later(flipDuel, SUSPENSE);
+  updateControls();
+  $("duelBtn").focus({ preventScroll: true });
+  $("duel").scrollTop = 0;
+}
+
+// One button press: each player places their next face-down card.
+function advanceDuel() {
+  const a = active, r = a.r;
+  for (const i of [0, 1]) {
+    const entry = part(r, i, a.duel, false)[a.placed];
+    if (entry) place(i, entry);          // a player short on cards places fewer
+  }
+  a.placed++;
+  drawPiles();
+  if (a.placed >= a.downs) {
+    a.waiting = false; a.flipping = true;
+    later(flipDuel, SUSPENSE);
+  }
+  updateControls();
+}
+
+// The deciding cards. In the popup they rise face down over a drum roll, tremble,
+// turn over and slam down; only then does the result (or the next duel) appear.
+function flipDuel() {
+  const a = active, r = a.r, d = a.duel;
+  const ups = [0, 1].map((i) => part(r, i, d, true));
+  const dramatic = $("duel").open && !reduceMotion;
+  if (dramatic) {
+    for (const i of [0, 1]) $("d" + i).append(...ups[i].map(flipEl));
+    $("duel").scrollTop = $("duel").scrollHeight;
+    music.section("roll");
+  }
+  later(() => {
+    a.flipping = false;
+    for (const i of [0, 1]) ups[i].forEach((entry) => place(i, entry, !dramatic));
+    drawPiles();
+    if (dramatic) replay($("duel"), "impact");             // flash and shake as the cards land
+    if (d < r.duels) beginDuel(d + 1); else resolve();
+  }, dramatic ? REVEAL : 0);
+}
+
+// The round's winner is now visible on the table.
+function resolve() {
+  const a = active, r = a.r;
+  a.resolved = true;
+  if (r.winner !== null) laidEl(r.winner).lastElementChild.classList.add("best");
+  setStatus(resultText(r));
+  updateControls();
+  const { hold } = timings();
+  const finish = () => {
+    if (r.winner === null || reduceMotion) {     // no flight: leave the cards on the table
+      settle(false);
+      afterRound(hold + 200);
+    } else {
+      later(() => collect(r, () => { settle(); afterRound(60); }), hold);
+    }
+  };
+  if (!$("duel").open) { music.section(baseSection()); finish(); return; }
+  // Show who won the duel in the popup for a moment, then close it and carry on.
+  music.section("duel");
+  const w = r.winner;
+  if (w === null) {
+    setTitle("NO WINNER", "slam");
+    $("duelText").textContent = "Nobody has cards left to continue.";
+  } else {
+    const best = $("d" + w).lastElementChild;
+    best.classList.add("win");                             // winning card glows and grows
+    $("d" + (1 - w)).lastElementChild.classList.add("lose");   // losing card fades and drops
+    setTitle(`${NAMES[w].toUpperCase()} WINS!`, "slam");
+    $("duelText").textContent = `${NAMES[w]} wins the duel and takes all ${r.potSize} cards.`;
+    music.impact();
+    if (!reduceMotion) burst(best);
+  }
+  later(() => { closeDuel(); finish(); }, DUEL_RESULT);
+}
+
+// Fly every card on the table into the winner's won pile, which grows as each one lands.
+function collect(r, done) {
+  const w = r.winner, target = stackEl(w, "won");
+  const cards = [...laidEl(w).children, ...laidEl(1 - w).children];  // winner's cards land first
+  const { fly } = timings();
+  const stagger = Math.min(fly * 0.15, 600 / cards.length);
+  cards.forEach((el) => el.classList.remove("deal"));
+  const t = target.getBoundingClientRect();
+  cards.forEach((el, k) => {
+    const b = el.getBoundingClientRect();
+    const dx = t.left + t.width / 2 - (b.left + b.width / 2);
+    const dy = t.top + t.height / 2 - (b.top + b.height / 2);
+    el.style.zIndex = 10;
+    el.style.transition = `transform ${fly}ms ease-in ${k * stagger}ms`;
+    el.style.transform = `translate(${dx}px, ${dy}px) scale(.85)`;
+    later(() => {
+      el.style.visibility = "hidden";
+      shown[w].won++;
+      drawPiles();
+      pulse(target);
+    }, fly + k * stagger);
+  });
+  later(done, fly + (cards.length - 1) * stagger + 40);
+}
+
+// End the round being shown: log it and make the screen match the real game state.
+function settle(clearTable = true) {
+  timers.forEach(clearTimeout);
+  timers = [];
+  if (active) logRound(active.r);
+  active = null;
+  closeDuel();
+  if (clearTable) for (const i of [0, 1]) laidEl(i).replaceChildren();
+  shown = realCounts();
+  drawPiles();
+  updateControls();
+}
+
+function afterRound(delay) {
+  if (autoOn) {
+    if (game.over) autoOn = false;
+    else autoTimer = setTimeout(step, delay);
+  }
+  updateControls();
+}
+
+function logRound(r) {
+  const faces = (i) => r.laid[i].filter((x) => x.up).map((x) => rankLabel(x.card.rank) + x.card.suit).join(" → ");
+  const line = document.createElement("div");
+  line.textContent = `#${r.round}  P1 ${faces(0)}  |  P2 ${faces(1)}  —  ` +
+    (r.winner === null ? "tie" : `${NAMES[r.winner]} +${r.potSize}`);
+  $("log").prepend(line);
+  while ($("log").childElementCount > 200) $("log").lastChild.remove();
+}
+
+function stopAuto() {
+  autoOn = false;
+  clearTimeout(autoTimer);
+  updateControls();
+}
+
+function startAuto() {
+  if ($("speed").value === "instant") {  // run to the end in one go: no animation, no duel presses
+    if (active) settle();
+    game.cap = capValue();
+    let r = null;
+    while (!game.over) { r = playRound(game); logRound(r); }
+    if (r) {
+      for (const i of [0, 1]) laidEl(i).replaceChildren(...r.laid[i].map((e) => cardEl(e)));
+      if (r.winner !== null) laidEl(r.winner).lastElementChild.classList.add("best");
+      setStatus(resultText(r));
+    }
+    shown = realCounts();
+    drawPiles();
+    updateControls();
+    music.section(baseSection());
+    return;
+  }
+  autoOn = true;
+  if (active) updateControls();          // carries on by itself once this round is finished
+  else step();
+}
+
+function start(deck) {
+  autoOn = false;
+  clearTimeout(autoTimer);
+  timers.forEach(clearTimeout);
+  timers = [];
+  active = null;
+  game = newGame(capValue(), deck);
+  if (net) Object.assign(net, { point: 0, pressed: false, remotePoint: -1, started: online() });
+  closeDuel();                           // also puts the music back on the march
+  for (const i of [0, 1]) laidEl(i).replaceChildren();
+  $("log").replaceChildren();
+  shuffleAndDeal();
+}
+
+// --- Start of a game: the deck is riffle-shuffled in the middle, then dealt out card by card ---
+
+const RIFFLE = 560, RIFFLES = 3;         // length of one riffle in ms, and how many
+const DEAL_GAP = 24, DEAL_FLY = 240;     // ms between dealt cards, and each card's travel time
+
+function shuffleAndDeal() {
+  music.hush();
+  $("dealer").replaceChildren();
+  if (reduceMotion) { finishDeal(); return; }
+  dealing = true;
+  shown = [0, 1].map(() => ({ draw: 0, won: 0, refills: 0 }));
+  drawPiles();
+  setStatus("");
+  updateControls();
+
+  // The deck sits over the status line, between the two players (#dealer is anchored to its centre).
+  const backCard = (lift) => {
+    const el = document.createElement("div");
+    el.className = "card down";
+    el.style.cssText = `position:absolute; left:-26px; top:${-38 - lift}px`;
+    $("dealer").append(el);
+    return el;
+  };
+  const deck = [];
+  for (let k = 0; k < 12; k++) deck.push(backCard(k * 0.7));
+
+  // Riffle: the deck splits into two halves, then the cards drop back together one by one.
+  deck.forEach((el, k) => {
+    const side = k % 2 ? 1 : -1, back = 0.42 + (k / deck.length) * 0.4;
+    const apart = `translate(${side * 44}px, 0) rotate(${side * 7}deg)`;
+    el.animate([
+      { offset: 0, transform: "none" },
+      { offset: 0.28, transform: apart },
+      { offset: back, transform: apart },
+      { offset: back + 0.14, transform: "none" },
+      { offset: 1, transform: "none" },
+    ], { duration: RIFFLE, iterations: RIFFLES, easing: "ease-in-out" });
+  });
+  for (let n = 0; n < RIFFLES; n++)
+    music.ticks((n + 0.42) * RIFFLE / 1000, 14, 0.4 * RIFFLE / 14 / 1000, 0.05);
+
+  // Deal: cards fly alternately to each player's draw pile, which grows as they land.
+  later(() => {
+    music.ticks(0, 52, DEAL_GAP / 1000, 0.03);
+    for (let n = 0; n < 52; n++) {
+      const i = n % 2;
+      later(() => {
+        const el = backCard(0);
+        const from = $("dealer").getBoundingClientRect(), to = stackEl(i, "draw").getBoundingClientRect();
+        const flight = `translate(${to.left + to.width / 2 - from.left}px, ${to.top + to.height / 2 - from.top}px) scale(.85)`;
+        el.animate([{ transform: "none" }, { transform: flight }], { duration: DEAL_FLY, easing: "ease-in" });
+        later(() => { el.remove(); shown[i].draw++; drawPiles(); }, DEAL_FLY - 10);
+        if (n % 5 === 4 && deck.length) deck.pop().remove();   // the deck thins as it is dealt
+      }, n * DEAL_GAP);
+    }
+    later(finishDeal, 51 * DEAL_GAP + DEAL_FLY + 60);
+  }, RIFFLE * RIFFLES + 150);
+}
+
+// The game is ready to play (also used to skip the shuffle).
+function finishDeal() {
+  dealing = false;
+  timers.forEach(clearTimeout);
+  timers = [];
+  music.hush();
+  $("dealer").replaceChildren();
+  shown = realCounts();
+  drawPiles();
+  setStatus(online() ? "Each round is played once both of you have pressed Flip your card."
+                     : "Press Next round to flip the first cards.");
+  updateControls();
+}
+
+// ---------- Online play: two browsers connected directly to each other (PeerJS / WebRTC) ----------
+// The host shuffles and sends the deck. After that each browser runs the same game by itself and
+// the two only exchange button presses: a round, or a duel card, goes ahead once both have pressed.
+
+const PEERJS_URL = "https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js";
+const PEERJS_SRI = "sha384-x0YgkOr/3UOZP2CRDxGW9e0Q+2Qjyr3uJrm4xU32Y7ZCNAo7Cc7bjhrZMi/dwczu";
+const ROOM_PREFIX = "war-card-game-";    // keeps these rooms apart from other apps on the shared PeerJS service
+const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";       // no 0/O or 1/I, which are easy to mix up
+const PROTOCOL = 1;                      // raise this whenever the messages or the game rules change
+
+// Online session (`net`): { peer, conn, me, code, live, started, gameNo, point, pressed, remotePoint }
+//   me: 0 = host (Player 1), 1 = guest (Player 2)      live: the two browsers are connected
+//   started: the host's deck has arrived               gameNo: which game of this session this is
+//   point: how many press points this game has used    pressed: I have pressed for the current one
+//   remotePoint: the latest press point the opponent has pressed for
+
+// The online library is only fetched when someone chooses to play online, so solo play works offline.
+function loadPeerJS() {
+  if (window.Peer) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = PEERJS_URL;
+    script.integrity = PEERJS_SRI;       // refuse the file if it is not exactly the version checked
+    script.crossOrigin = "anonymous";
+    script.onload = resolve;
+    script.onerror = () => { script.remove(); reject(new Error("could not load PeerJS")); };
+    document.head.append(script);
+  });
+}
+
+function newSession(peer, me, code) {
+  net = { peer, conn: null, me, code, live: false, started: false, gameNo: 0, point: 0, pressed: false, remotePoint: -1 };
+  return net;
+}
+
+const lobbyStatus = (text) => { $("lobbyStatus").textContent = text; };
+
+function showLobby(view, busy = false) {  // view: "choose" (host or join) or "host" (showing the room code)
+  $("lobbyChoose").hidden = view !== "choose";
+  $("lobbyHost").hidden = view !== "host";
+  for (const id of ["hostBtn", "joinBtn", "codeIn"]) $(id).disabled = busy;
+}
+
+function openLobby() {
+  stopAuto();
+  showLobby("choose");
+  lobbyStatus("");
+  $("lobby").showModal();
+}
+
+function peerProblem(err, code) {
+  return {
+    "peer-unavailable": `No game found with the code ${code}. Check it with your friend.`,
+    "browser-incompatible": "This browser can't make the direct connection online play needs.",
+    "network": "Couldn't reach the connection service. Check your internet connection.",
+    "server-error": "The connection service isn't responding. Try again in a minute.",
+    "socket-error": "The connection service isn't responding. Try again in a minute.",
+  }[err.type] || "Something went wrong while connecting. Try again.";
+}
+
+async function hostGame() {
+  showLobby("choose", true);
+  lobbyStatus("Setting up your room…");
+  try { await loadPeerJS(); }
+  catch (e) { showLobby("choose"); lobbyStatus("Couldn't load online play. Check your internet connection."); return; }
+  if ($("lobby").open) openRoom(0);
+}
+
+function openRoom(attempt) {
+  const code = Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join("");
+  const peer = new Peer(ROOM_PREFIX + code);
+  const session = newSession(peer, 0, code);
+  peer.on("open", () => {
+    if (net !== session) return;
+    $("roomCode").textContent = code;
+    $("copyBtn").textContent = location.protocol.startsWith("http") ? "Copy invite link" : "Copy room code";
+    showLobby("host");
+    lobbyStatus("Waiting for your friend to join…");
+  });
+  peer.on("connection", (conn) => {
+    if (net !== session || session.conn) { conn.on("open", () => conn.close()); return; }   // a room holds two
+    session.conn = conn;
+    wire(session, conn);
+  });
+  peer.on("disconnected", () => { if (net === session && !session.live) peer.reconnect(); });
+  peer.on("error", (err) => {
+    if (net !== session || session.live) return;
+    if (err.type === "unavailable-id" && attempt < 3) { peer.destroy(); openRoom(attempt + 1); return; }   // code taken
+    endSession(peerProblem(err, code));
+  });
+}
+
+async function joinGame(typed) {
+  const code = typed.trim().toUpperCase();
+  if (!/^[A-Z2-9]{5}$/.test(code)) { lobbyStatus("A room code is 5 letters or numbers."); return; }
+  showLobby("choose", true);
+  lobbyStatus(`Joining room ${code}…`);
+  try { await loadPeerJS(); }
+  catch (e) { showLobby("choose"); lobbyStatus("Couldn't load online play. Check your internet connection."); return; }
+  if (!$("lobby").open) return;
+  const peer = new Peer();
+  const session = newSession(peer, 1, code);
+  session.timeout = setTimeout(() => {
+    if (net === session && !session.live) endSession("Couldn't connect. Check the code, or try a different network.");
+  }, 15000);
+  peer.on("open", () => {
+    if (net !== session) return;
+    session.conn = peer.connect(ROOM_PREFIX + code, { reliable: true });
+    wire(session, session.conn);
+  });
+  peer.on("error", (err) => { if (net === session && !session.live) endSession(peerProblem(err, code)); });
+}
+
+function wire(session, conn) {
+  conn.on("open", () => {
+    if (net !== session) return;
+    clearTimeout(session.timeout);
+    session.live = true;
+    if ($("lobby").open) $("lobby").close();
+    stopAuto();
+    document.body.classList.add("online");
+    showNet();
+    if (session.me === 0) hostStart();
+    else { setStatus("Connected. Waiting for the host to deal…"); updateControls(); }
+  });
+  conn.on("data", (message) => { if (net === session) receive(message); });
+  conn.on("close", () => { if (net === session) endSession("Your opponent left, so you are back in solo play."); });
+  conn.on("error", () => { if (net === session) endSession("The connection was lost, so you are back in solo play."); });
+}
+
+// Leave online play (or give up connecting). Whatever game is on screen carries on as a solo game.
+function endSession(message = "") {
+  const session = net;
+  net = null;
+  if (session) {
+    clearTimeout(session.timeout);
+    try { session.peer.destroy(); } catch (e) { /* already gone */ }
+  }
+  document.body.classList.remove("online");
+  if ($("lobby").open) { showLobby("choose"); lobbyStatus(message); showNet(); }
+  else showNet(message);
+  updateControls();
+}
+
+function showNet(message = "") {
+  const on = online();
+  $("online").textContent = on ? "Leave online game" : "Play online";
+  $("net").hidden = !on && !message;
+  $("net").textContent = on
+    ? `Online game · room ${net.code} · you are Player ${net.me + 1}. A round is played once you have both pressed.`
+    : message;
+}
+
+function send(message) {
+  try { if (online()) net.conn.send(message); } catch (e) { /* the close handler deals with a dead link */ }
+}
+
+// A deck arriving from the other browser must be exactly the 52 cards, nothing else.
+function validDeck(deck) {
+  if (!Array.isArray(deck) || deck.length !== 52) return false;
+  const seen = new Set();
+  for (const c of deck) {
+    if (!c || !Number.isInteger(c.rank) || c.rank < 2 || c.rank > 14 || !SUITS.includes(c.suit)) return false;
+    seen.add(c.rank + c.suit);
+  }
+  return seen.size === 52;
+}
+
+function hostStart() {
+  const deck = shuffledDeck();
+  net.gameNo++;
+  send({ t: "start", v: PROTOCOL, g: net.gameNo, deck, cap: capValue() });
+  start(deck);
+}
+
+function receive(m) {
+  if (!m || typeof m !== "object") return;
+  if (m.t === "start" && net.me === 1) {                     // the host has dealt
+    if (m.v !== PROTOCOL || !validDeck(m.deck)) {
+      endSession("You and your friend have different versions of the game. Both reload the page and try again.");
+      return;
+    }
+    net.gameNo = m.g;
+    $("cap").value = Math.max(1, parseInt(m.cap, 10) || 3);
+    start(m.deck.map((c) => ({ rank: c.rank, suit: c.suit })));
+  } else if (m.t === "press" && m.g === net.gameNo && m.p === net.point) {
+    net.remotePoint = m.p;                                   // the opponent pressed for the current point
+    tryAdvance();
+  } else if (m.t === "new" && net.me === 0 && game.over) {   // the guest asked for another game
+    hostStart();
+  }
+}
+
+// A press point is a moment the game waits for both players: the start of a round,
+// or each face-down card of a duel.
+function pointOpen() {
+  if (dealing || !net.started) return false;
+  return active ? active.waiting || (active.resolved && !game.over) : !game.over;
+}
+
+function localPress() {
+  if (!pointOpen() || net.pressed) return;
+  net.pressed = true;
+  send({ t: "press", g: net.gameNo, p: net.point });
+  tryAdvance();
+}
+
+function tryAdvance() {
+  if (pointOpen() && net.pressed && net.remotePoint >= net.point) {
+    net.point++;
+    net.pressed = false;
+    if (active && active.waiting) advanceDuel(); else step();
+    if ($("duel").open && !$("duelBtn").disabled) $("duelBtn").focus({ preventScroll: true });
+  } else {
+    updateControls();
+  }
+}
+
+$("online").onclick = () => { if (online()) endSession("You left the online game and are back in solo play."); else openLobby(); };
+$("hostBtn").onclick = hostGame;
+$("joinBtn").onclick = () => joinGame($("codeIn").value);
+$("codeIn").onkeydown = (e) => { if (e.key === "Enter") joinGame($("codeIn").value); };
+// Closing the lobby before a connection is made gives up the room or the attempt to join.
+const abandonLobby = () => { if (net && !net.live) endSession(); };
+$("lobbyClose").onclick = () => { abandonLobby(); $("lobby").close(); };
+$("lobby").addEventListener("cancel", abandonLobby);     // Esc key
+$("lobby").addEventListener("close", abandonLobby);
+$("copyBtn").onclick = async () => {
+  const link = location.protocol.startsWith("http");
+  try {
+    await navigator.clipboard.writeText(link ? `${location.href.split("#")[0]}#${net.code}` : net.code);
+    lobbyStatus(link ? "Link copied. Send it to your friend." : "Code copied. Send it to your friend.");
+  } catch (e) {
+    lobbyStatus("Couldn't copy it. Read the code above out to your friend.");
+  }
+};
+addEventListener("pagehide", () => { if (net) net.peer.destroy(); });   // tell the opponent straight away
+
+$("next").onclick = () => {
+  if (dealing) { finishDeal(); return; }
+  if (online()) { localPress(); return; }
+  if (active && active.waiting) { advanceDuel(); return; }   // auto-play stays on through a duel
+  if (active && !active.resolved) return;                    // deciding card is about to flip
+  stopAuto();
+  step();
+};
+$("duelBtn").onclick = () => {
+  if (online()) localPress();
+  else if (active && active.waiting) advanceDuel();
+};
+$("duel").addEventListener("cancel", (e) => e.preventDefault());   // Esc must not dismiss a duel
+$("auto").onclick = () => { if (autoOn) stopAuto(); else startAuto(); };
+$("speed").onchange = () => { if (autoOn && $("speed").value === "instant") { stopAuto(); startAuto(); } };
+$("new").onclick = () => {
+  if (!online()) start();
+  else if (net.me === 0) hostStart();
+  else send({ t: "new" });
+};
+
+function showMusic() { $("music").textContent = music.on ? "Music: On" : "Music: Off"; }
+$("music").onclick = () => { music.setOn(!music.on); showMusic(); };
+$("vol").value = Math.round(music.volume * 100);
+$("vol").oninput = () => music.setVolume($("vol").value / 100);
+showMusic();
+
+start();
+
+// An invite link ends in #ROOMCODE: join that room straight away.
+const invite = location.hash.match(/^#([A-Za-z2-9]{5})$/);
+if (invite) {
+  openLobby();
+  $("codeIn").value = invite[1].toUpperCase();
+  joinGame(invite[1]);
+}
+</script>
+</body>
+</html>
