@@ -128,6 +128,25 @@
   #menu .row { display: flex; margin-bottom: 10px; }
   #menu .row > * { flex: 1; }
   #menuStart { padding: 12px; font-size: 1.1rem; }
+  #victory { border-color: var(--accent); box-shadow: 0 0 50px rgba(250, 204, 21, .5); position: fixed; }
+  #victory h2 { font-size: 2.4rem; }
+  #victory p { min-height: 0; margin-bottom: 14px; color: #d6d3d1; }
+  #victory .crownBig { font-size: 52px; line-height: 1; filter: drop-shadow(0 0 10px #facc15); }
+  #victory.draw .crownBig { display: none; }
+  #victory .score { display: flex; gap: 10px; margin-bottom: 8px; }
+  #victory .score > div { flex: 1; background: rgba(255,255,255,.06); border-radius: 10px; padding: 10px 6px; }
+  #victory .score > div.won { outline: 2px solid var(--accent); }
+  #victory .score span { display: block; font-size: .85rem; color: #d6d3d1; }
+  #victory .score strong { display: block; font-size: 1.8rem; color: #fff; font-variant-numeric: tabular-nums; }
+  #victory .turns { font-size: .85rem; }
+  #victory .row { display: flex; gap: 8px; margin-bottom: 10px; }
+  #victory .row > * { flex: 1; }
+  #victoryAgain { padding: 12px; font-size: 1.1rem; }
+  #vsparks { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+  @media (prefers-reduced-motion: no-preference) {
+    #victory .crownBig { animation: crownLand .6s cubic-bezier(.3, 1.5, .5, 1) both; }
+    #victory h2 { animation: titleSlam .45s cubic-bezier(.2, 1.6, .4, 1) .15s both; }
+  }
   #lobby { border-color: var(--accent); box-shadow: 0 0 40px rgba(250, 204, 21, .35); }
   #lobby h2 { font-size: 1.5rem; letter-spacing: 0; margin-bottom: 8px; }
   #lobby p { min-height: 0; margin-bottom: 12px; }
@@ -283,6 +302,7 @@
   @keyframes slash { from { scale: 0 1; } }
   @keyframes goldFlash { from { background: #facc15; opacity: .55; } to { background: #facc15; opacity: 0; } }
   @keyframes ring { from { scale: .3; opacity: 1; } to { scale: 7; opacity: 0; } }
+  @keyframes crownLand { from { transform: translateY(-60px) scale(2); opacity: 0; } }
   @keyframes crownDrop { from { translate: -50% -70px; scale: 2; opacity: 0; } }
 </style>
 </head>
@@ -375,6 +395,20 @@
   </div>
   <div class="row"><button id="menuStart">Start game</button></div>
   <div class="row"><button id="menuBack" class="secondary">Back to game</button></div>
+</dialog>
+
+<dialog id="victory" aria-labelledby="victoryTitle">
+  <div class="crownBig" aria-hidden="true">👑</div>
+  <h2 id="victoryTitle">YOU WIN!</h2>
+  <p id="victoryWhy"></p>
+  <div class="score">
+    <div><span id="vName0">Player 1</span><strong id="vCards0">0</strong></div>
+    <div><span id="vName1">Player 2</span><strong id="vCards1">0</strong></div>
+  </div>
+  <p id="victoryTurns" class="turns"></p>
+  <div class="row"><button id="victoryAgain">Play again</button></div>
+  <div class="row"><button id="victoryMenu" class="secondary">Menu</button><button id="victoryClose" class="secondary">See the table</button></div>
+  <div id="vsparks"></div>
 </dialog>
 
 <dialog id="lobby" aria-labelledby="lobbyTitle">
@@ -1614,7 +1648,53 @@ function afterRound(delay) {
   updateControls();
   pump();                                // online: the opponent may already have played their next card
   if (!autoOn) tryProceed();             // Draw 3: the computer picks, or both picks are already in
+  if (game.over) { const g = game; setTimeout(() => { if (game === g) showVictory(); }, 700); }
 }
+
+// --- End of a match: a popup naming the winner, with the final card count ---
+
+const seatName = (i) => online() ? (i === net.me ? "You" : "Your opponent")
+                      : draw3() ? (i === 0 ? "You" : "Computer") : NAMES[i];
+
+function showVictory() {
+  if (!game || !game.over || game.victoryShown || $("victory").open) return;
+  game.victoryShown = true;
+  const w = game.winner, counts = game.players.map(count);
+  const me = online() ? net.me : draw3() ? 0 : null;   // the seat that is "you", if there is one
+  $("victory").classList.toggle("draw", w === null);
+  $("victoryTitle").textContent = w === null ? "IT'S A DRAW" : w === me ? "YOU WIN!" : `${seatName(w).toUpperCase()} WINS!`;
+  $("victoryWhy").textContent = {
+    cards: w === null ? "" : `${seatName(1 - w)} ran out of cards.`,
+    cap: `Round ${game.cap} is over, so the most cards wins.`,
+    stalemate: "Both players ran out of cards in a duel.",
+  }[game.reason];
+  for (const i of [0, 1]) {
+    $("vName" + i).textContent = seatName(i);
+    $("vCards" + i).textContent = counts[i];
+    $("vCards" + i).parentElement.classList.toggle("won", w === i);
+  }
+  $("victoryTurns").textContent = `${game.round} turns played`;
+  const guest = online() && net.me === 1;
+  $("victoryAgain").textContent = guest ? "Ask for a rematch" : "Play again";
+  $("vsparks").replaceChildren();
+  $("victory").showModal();
+  $("victoryAgain").focus({ preventScroll: true });
+  if (w !== null && !reduceMotion) {
+    music.fanfare();
+    const crown = $("victory").querySelector(".crownBig");
+    setTimeout(() => burst(crown, $("vsparks")), 350);
+    setTimeout(() => burst($("victoryTitle"), $("vsparks")), 650);
+  }
+}
+
+$("victoryAgain").onclick = () => {
+  $("victory").close();
+  if (!online()) start();
+  else if (net.me === 0) hostStart();
+  else send({ t: "new" });                 // the host deals the rematch straight away
+};
+$("victoryMenu").onclick = () => { $("victory").close(); openMenu(); };
+$("victoryClose").onclick = () => $("victory").close();
 
 function logRound(r) {
   const faces = (i) => r.laid[i].filter((x) => x.up).map((x) => rankLabel(x.card.rank) + x.card.suit).join(" → ");
@@ -1651,6 +1731,7 @@ function startAuto() {
     drawPiles();
     updateControls();
     music.section(baseSection());
+    setTimeout(showVictory, 400);
     return;
   }
   autoOn = true;
@@ -1666,6 +1747,7 @@ function start(deck) {
   timers.forEach(clearTimeout);
   timers = [];
   active = null;
+  if ($("victory").open) $("victory").close();
   book = {};
   pickState = null;
   shownHands = [[], []];

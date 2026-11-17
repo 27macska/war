@@ -8,6 +8,8 @@ The card game War in your browser. Play against the computer or a friend online,
 
 The game opens with a menu. Choose:
 
+![The start menu: game mode, opponent, speed and rounds](docs/menu.jpg)
+
 - **Game mode:** Draw 3 (pick from a hand) or Classic (flip the top card)
 - **Opponent:** the computer (works offline) or a friend online
 - **Speed:** how fast turns play
@@ -35,6 +37,10 @@ If you run low on cards in a duel, you place fewer face down so you still have o
 
 - You win if your opponent runs out of cards.
 - **Rounds** sets a limit on how long the game lasts. One round is one trip through your Draw pile. When a player finishes the last round, whoever has more cards wins.
+
+When the match ends, a popup names the winner and shows the final card count. Click **Play again** for a rematch with the same settings, **Menu** to change them, or **See the table** to look at the final cards. Online, the guest's button asks the host for a rematch.
+
+![The end-of-match popup: the winner, final card counts and turns played](docs/victory.jpg)
 
 ## Draw 3 mode
 
