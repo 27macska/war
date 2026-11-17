@@ -298,7 +298,7 @@
   </header>
   <div id="net" role="status" hidden></div>
   <div class="controls">
-    <button id="next">Next round</button>
+    <button id="next">Next turn</button>
     <button id="auto" class="secondary">Auto-play</button>
     <button id="new" class="secondary">New game</button>
     <button id="menuBtn" class="secondary">Menu</button>
@@ -371,7 +371,7 @@
         <option value="instant">Instant</option>
       </select>
     </label>
-    <label>Deck passes <input id="cap" type="number" min="1" value="3"></label>
+    <label>Rounds <input id="cap" type="number" min="1" value="3"></label>
   </div>
   <div class="row"><button id="menuStart">Start game</button></div>
   <div class="row"><button id="menuBack" class="secondary">Back to game</button></div>
@@ -1131,7 +1131,7 @@ function drawPiles() {
       el.style.boxShadow = layers.join(",") || "none";
     }
     $("p" + i).querySelector(".info").textContent =
-      `Pass ${Math.min(shown[i].refills + 1, game.cap)} of ${game.cap} · ` +
+      `Round ${Math.min(shown[i].refills + 1, game.cap)} of ${game.cap} · ` +
       `${shown[i].draw + shown[i].won + (draw3() ? shownHands[i].length : 0)} cards`;
   }
 }
@@ -1228,8 +1228,8 @@ function setStatus(text, duel = false) {
 
 function resultText(r) {
   let text = r.winner === null
-    ? `Round ${r.round}: tie with no cards left to duel.`
-    : `Round ${r.round}: ${NAMES[r.winner]} takes ${r.potSize} cards` +
+    ? `Turn ${r.round}: tie with no cards left to duel.`
+    : `Turn ${r.round}: ${NAMES[r.winner]} takes ${r.potSize} cards` +
       (r.duels ? ` after ${r.duels} duel${r.duels > 1 ? "s" : ""}.` : ".");
   if (r.close) text += ` Close call: ${rankName(r.up[r.winner].rank)} beat ${rankName(r.up[1 - r.winner].rank)}.`;
   r.lastCardStands.forEach((s, i) => {
@@ -1238,7 +1238,7 @@ function resultText(r) {
   if (game.over) {
     const who = game.winner === null ? "It's a draw" : `${NAMES[game.winner]} wins`;
     const why = { cards: "the other player is out of cards",
-                  cap: `a player finished deck pass ${game.cap}, so the most cards wins`,
+                  cap: `a player finished round ${game.cap}, so the most cards wins`,
                   stalemate: "both players ran out during a duel" }[game.reason];
     text += ` Game over: ${who} (${why}).`;
   }
@@ -1264,9 +1264,9 @@ function updateControls() {
               : a && a.flipping ? "Flipping…"
               : theirs ? "Opponent's turn…"
               : a && a.waiting ? duelCard()
-              : d3 && idle && !over && !on ? (ps && ps.needs[0] ? "Play a random card" : "Next round")
+              : d3 && idle && !over && !on ? (ps && ps.needs[0] ? "Play a random card" : "Next turn")
               : d3 && idle && !over && net.started ? (canPick() ? "Pick a card to play" : "Waiting for opponent…")
-              : !on ? "Next round"
+              : !on ? "Next turn"
               : over ? "Game over"
               : net.started ? "Play your card" : "Waiting for the host…";
   $("next").disabled = over || theirs || (on && !net.started) || !!(a && a.picking) ||
@@ -1321,7 +1321,7 @@ function step(seat = null) {
   if (seat === null) { follow(); return; }
   drawPiles();
   const mine = seat === net.me;
-  setStatus(`Round ${r.round}: ${mine ? "You" : "Your opponent"} played ${rankName(r.laid[seat][0].card.rank)}. ` +
+  setStatus(`Turn ${r.round}: ${mine ? "You" : "Your opponent"} played ${rankName(r.laid[seat][0].card.rank)}. ` +
             (mine ? "Waiting for your opponent…" : "Your turn."));
   updateControls();
 }
@@ -1340,7 +1340,7 @@ function showTie() {
   const a = active, r = a.r, wait = reduceMotion ? 700 : timings().tie;
   a.tie = true;
   for (const i of [0, 1]) laidEl(i).lastElementChild.classList.add("tie");
-  setStatus(`Round ${r.round}: Tie! Both played ${rankName(r.laid[0][0].card.rank)}…`, true);
+  setStatus(`Turn ${r.round}: Tie! Both played ${rankName(r.laid[0][0].card.rank)}…`, true);
   music.swell(wait / 1000);
   updateControls();
   later(() => { a.tie = false; beginDuel(1); }, wait);
@@ -1355,7 +1355,7 @@ function beginDuel(d) {
   a.waiting = a.downs > 0;
   a.flipping = !a.waiting;               // nobody has a card to place face down: go straight to the flip
   openDuel(r, d, tied, a.downs);
-  setStatus(`Round ${r.round}: ${duelTitle(d)} Both players flipped ${rankName(tied)}.`, true);
+  setStatus(`Turn ${r.round}: ${duelTitle(d)} Both players flipped ${rankName(tied)}.`, true);
   if (a.flipping) later(toFlip, SUSPENSE);
   updateControls();
   $("duelBtn").focus({ preventScroll: true });
@@ -1420,7 +1420,7 @@ function resolve() {
     $("dim").classList.add("on");
     music.riser(wait / 1000);
   }
-  setStatus(`Round ${r.round}: ${rankName(r.up[0].rank)} against ${rankName(r.up[1].rank)}…`);
+  setStatus(`Turn ${r.round}: ${rankName(r.up[0].rank)} against ${rankName(r.up[1].rank)}…`);
   music.swell(wait / 1000);
   updateControls();
   later(announce, wait);
@@ -1752,7 +1752,7 @@ function finishDeal() {
   drawPiles();
   setStatus(draw3()
           ? "Pick a card to play."
-          : !online() ? "Press Next round to flip the first cards."
+          : !online() ? "Press Next turn to flip the first cards."
           : (game.lead === net.me ? "You play" : "Your opponent plays") +
             " the first card. After that, the winner of each round plays first.");
   updateControls();
@@ -2050,7 +2050,7 @@ $("next").onclick = () => {
   stopAuto();
   step();
 };
-// --- Start menu: game mode, opponent, speed and deck passes, chosen before a game starts ---
+// --- Start menu: game mode, opponent, speed and rounds, chosen before a game starts ---
 
 function openMenu() {
   if ($("menu").open) return;
